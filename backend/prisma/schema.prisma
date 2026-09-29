@@ -1,0 +1,237 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model SecurityUser {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String
+  name          String?
+  role          String
+  isActive      Boolean   @default(true)
+  lastLoginAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  refreshTokens SecurityRefreshToken[]
+  auditLogs     SecurityAuditLog[]
+  incidents     SecurityIncident[]      @relation("assignedTo")
+  blocks        SecurityIpBlock[]
+
+  @@map("security_users")
+}
+
+model SecurityRefreshToken {
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  userAgent  String?
+  ipAddress  String?
+  createdAt  DateTime  @default(now())
+
+  user SecurityUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("security_refresh_tokens")
+}
+
+model SecurityApiKey {
+  id         String    @id @default(cuid())
+  name       String
+  keyPrefix  String    @unique
+  keyHash    String
+  scopes     String
+  isActive   Boolean   @default(true)
+  expiresAt  DateTime?
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdBy  String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([keyPrefix])
+  @@map("security_api_keys")
+}
+
+model SecurityEvent {
+  id            String   @id @default(cuid())
+  eventType     String
+  severity      String
+  ipAddress     String?
+  userId        String?
+  sessionId     String?
+  userAgent     String?
+  requestMethod String?
+  requestPath   String?
+  requestId     String?
+  metadata      Json?
+  riskScore     Int      @default(0)
+  riskLevel     String   @default("NORMAL")
+  occurredAt    DateTime
+  createdAt     DateTime @default(now())
+  apiKeyId      String?
+  incidentId    String?
+
+  incident SecurityIncident? @relation(fields: [incidentId], references: [id])
+
+  @@index([ipAddress])
+  @@index([occurredAt])
+  @@index([eventType])
+  @@index([severity])
+  @@index([userId])
+  @@index([incidentId])
+  @@index([riskLevel])
+  @@map("security_events")
+}
+
+model SecurityIncident {
+  id              String    @id @default(cuid())
+  incidentId      String    @unique
+  title           String
+  description     String    @db.Text
+  severity        String
+  riskScore       Int
+  status          String    @default("OPEN")
+  sourceIp        String?
+  userId          String?
+  sessionId       String?
+  detectionRule   String?
+  assignedTo      String?
+  resolutionNotes String?   @db.Text
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  resolvedAt      DateTime?
+
+  assignee SecurityUser?               @relation("assignedTo", fields: [assignedTo], references: [id])
+  events   SecurityEvent[]
+  timeline SecurityIncidentTimeline[]
+  blocks   SecurityIpBlock[]
+
+  @@index([status])
+  @@index([severity])
+  @@index([riskScore])
+  @@index([sourceIp])
+  @@index([createdAt])
+  @@map("security_incidents")
+}
+
+model SecurityIncidentTimeline {
+  id         String   @id @default(cuid())
+  incidentId String
+  action     String
+  actor      String?
+  details    String?  @db.Text
+  createdAt  DateTime @default(now())
+
+  incident SecurityIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  @@index([incidentId])
+  @@map("security_incident_timeline")
+}
+
+model SecurityIp {
+  id              String    @id @default(cuid())
+  ipAddress       String    @unique
+  firstSeenAt     DateTime  @default(now())
+  lastSeenAt      DateTime  @default(now())
+  requestCount    Int       @default(0)
+  eventCount      Int       @default(0)
+  failedLogins    Int       @default(0)
+  riskScore       Int       @default(0)
+  riskLevel       String    @default("NORMAL")
+  country         String?
+  region          String?
+  city            String?
+  isVpn           Boolean   @default(false)
+  isProxy         Boolean   @default(false)
+  isTor           Boolean   @default(false)
+  isDatacenter    Boolean   @default(false)
+  isMalicious     Boolean   @default(false)
+  reputationScore Int       @default(0)
+  lastIntelUpdate DateTime?
+  notes           String?   @db.Text
+
+  @@index([riskScore])
+  @@index([lastSeenAt])
+  @@map("security_ips")
+}
+
+model SecurityRule {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  description String   @db.Text
+  isEnabled   Boolean  @default(true)
+  priority    Int      @default(100)
+  config      Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("security_rules")
+}
+
+model SecurityIpBlock {
+  id                String    @id @default(cuid())
+  ipAddress         String
+  action            String
+  reason            String    @db.Text
+  administratorId   String?
+  relatedIncidentId String?
+  isPermanent       Boolean   @default(false)
+  expiresAt         DateTime?
+  active            Boolean   @default(true)
+  automatic         Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  administrator SecurityUser?     @relation(fields: [administratorId], references: [id])
+  incident      SecurityIncident? @relation(fields: [relatedIncidentId], references: [id])
+
+  @@index([ipAddress])
+  @@index([active])
+  @@index([expiresAt])
+  @@map("security_ip_blocks")
+}
+
+model SecurityIpAllowlist {
+  id        String    @id @default(cuid())
+  ipAddress String    @unique
+  reason    String    @db.Text
+  addedBy   String?
+  createdAt DateTime  @default(now())
+  expiresAt DateTime?
+
+  @@map("security_ip_allowlist")
+}
+
+model SecurityAuditLog {
+  id         String   @id @default(cuid())
+  requestId  String?
+  actorType  String
+  actorId    String?
+  actorLabel String?
+  action     String
+  targetType String?
+  targetId   String?
+  result     String
+  metadata   Json?
+  ipAddress  String?
+  userAgent  String?
+  userId     String?
+  createdAt  DateTime @default(now())
+
+  user SecurityUser? @relation(fields: [userId], references: [id])
+
+  @@index([actorId])
+  @@index([action])
+  @@index([createdAt])
+  @@index([userId])
+  @@map("security_audit_logs")
+}
