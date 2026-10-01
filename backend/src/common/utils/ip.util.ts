@@ -27,7 +27,7 @@ export function normalizeIp(input?: string | null): string | undefined {
       const v6 = parsed as ipaddr.IPv6;
       if (v6.isIPv4MappedAddress()) return v6.toIPv4Address().toString();
     }
-    return parsed.toNormalizedString();
+    return parsed.toString();
   } catch {
     return undefined;
   }

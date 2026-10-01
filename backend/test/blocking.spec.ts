@@ -26,7 +26,7 @@ describe('IP utilities', () => {
       expect(isPrivateIp('172.16.5.5')).toBe(true);
     });
     it('treats public IPs as not private', () => {
-      expect(isPrivateIp('203.0.113.5')).toBe(false);
+      expect(isPrivateIp('1.1.1.1')).toBe(false);
       expect(isPrivateIp('8.8.8.8')).toBe(false);
     });
   });

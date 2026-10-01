@@ -54,3 +54,6 @@ export const AUDIT_ACTIONS = {
   IP_BLOCK: 'ip.block', IP_UNBLOCK: 'ip.unblock', IP_ALLOW: 'ip.allow', IP_UNALLOW: 'ip.unallow',
   RULE_UPDATE: 'rule.update', AUTO_BLOCK: 'ip.autoblock',
 } as const;
+
+export const ROLES_KEY = 'roles';
+export const SCOPES_KEY = 'scopes';
