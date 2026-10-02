@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { generateApiKey, hashApiKey } from '../common/utils/crypto.util';
+import { generateApiKey, hashApiKey, safeEqual } from '../common/utils/crypto.util';
 
 @Injectable()
 export class ApiKeysService {
@@ -34,7 +34,7 @@ export class ApiKeysService {
     if (!record.isActive || record.revokedAt) return null;
     if (record.expiresAt && record.expiresAt < new Date()) return null;
     const hash = hashApiKey(raw);
-    if (hash !== record.keyHash) return null;
+    if (!safeEqual(hash, record.keyHash)) return null;
     await this.prisma.securityApiKey.update({ where: { id: record.id }, data: { lastUsedAt: new Date() } });
     return record;
   }

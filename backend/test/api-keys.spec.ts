@@ -19,6 +19,12 @@ describe('API key generation', () => {
     expect(raw.length).toBeGreaterThan(40);
   });
 
+  it('stored lookup prefix is the leading part of the raw key (verify path)', () => {
+    const { raw, prefix } = generateApiKey('PMS_');
+    const prefixLen = 'PMS_'.length + 16;
+    expect(raw.slice(0, prefixLen)).toBe(prefix);
+  });
+
   it('produces deterministic hash for the same raw key', () => {
     const raw = 'PMS_stable_test_key_value_1234567890';
     const h1 = hashApiKey(raw);

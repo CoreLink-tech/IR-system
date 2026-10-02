@@ -1,10 +1,12 @@
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 
 export function generateApiKey(prefix = 'PMS_'): { raw: string; prefix: string; hash: string } {
-  const random = randomBytes(32).toString('base64url');
-  const raw = `${prefix}${random}`;
-  const lookup = randomBytes(8).toString('hex');
+  // The lookup prefix MUST be the leading part of the raw key, because
+  // verifyApiKey() derives it by slicing the presented key.
+  const lookup = randomBytes(8).toString('hex'); // 16 chars
+  const secret = randomBytes(32).toString('base64url');
   const keyPrefix = `${prefix}${lookup}`;
+  const raw = `${keyPrefix}${secret}`;
   const hash = hashApiKey(raw);
   return { raw, prefix: keyPrefix, hash };
 }
