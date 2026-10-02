@@ -49,6 +49,10 @@ Body: { "assignedTo": "<userId>" }
 
 ### GET /api/v1/ips/:ip — JWT
 
+### POST /api/v1/ips/:ip/refresh-intelligence — JWT (SUPER_ADMIN, SECURITY_ADMIN, ANALYST)
+Forces a fresh provider lookup, bypassing the 24 hour cache. Returns the merged
+intelligence and the list of active providers. Returns 404 for an invalid address.
+
 ### GET /api/v1/security/blocked-ips — JWT or API key with block:read
 Returns only active blocks. Used by Pishon middleware.
 

@@ -35,8 +35,9 @@ If riskScore crosses a rule's incident threshold, an incident is created
 State changes write timeline entries.
 
 ### IP Intelligence
-IpIntelligenceService is an abstraction. Default provider is "none".
-Implement provider interface and set IP_INTEL_PROVIDER to add one.
+IpIntelligenceService merges answers from pluggable providers (see docs/IP-INTELLIGENCE.md).
+Providers: tor (Tor Project exit list), ipapi, ipinfo, abuseipdb. Configure with IP_INTEL_PROVIDERS.
+Detection never depends on enrichment: if every provider is down the event is still processed.
 
 ### Blocking & Enforcement
 Platform stores blocks in security_ip_blocks. DOES NOT enforce.
