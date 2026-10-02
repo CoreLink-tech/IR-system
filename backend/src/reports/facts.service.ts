@@ -24,8 +24,9 @@ export class FactsService {
   ) {}
 
   async gatherIncidentFacts(id: string, now: Date = new Date()): Promise<IncidentFacts> {
-    const incident = await this.prisma.securityIncident.findUnique({
-      where: { id },
+    // Accept either the internal id or the public incident number (INC-...).
+    const incident = await this.prisma.securityIncident.findFirst({
+      where: { OR: [{ id }, { incidentId: id }] },
       include: { assignee: { select: { email: true } } },
     });
     if (!incident) throw new NotFoundException('Incident not found');

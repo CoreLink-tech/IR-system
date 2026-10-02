@@ -15,7 +15,7 @@ function fakePrisma(over: any = {}) {
   ];
   return {
     securityIncident: {
-      findUnique: async () => ({
+      findFirst: async () => ({
         id: 'i1', incidentId: 'INC-1', title: 't', severity: 'HIGH', status: 'OPEN', riskScore: 35,
         detectionRule: 'brute_force_login', sourceIp: '198.51.100.7', createdAt: created, updatedAt: created,
         resolvedAt: null, resolutionNotes: null, assignedTo: null, assignee: null,

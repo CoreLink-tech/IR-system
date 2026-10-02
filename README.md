@@ -45,6 +45,10 @@ Generate secrets:
     POST /api/v1/incidents/:id/status
     POST /api/v1/incidents/:id/assign
     GET  /api/v1/ips/:ip             IP intelligence
+    GET  /api/v1/reports/incidents/:id        plain-English incident report
+    GET  /api/v1/reports/technical/:id        technical incident report
+    GET  /api/v1/reports/executive-summary    owner/CEO summary
+    GET  /api/v1/reports/security-summary     aggregate security summary
     GET  /api/v1/security/blocked-ips
     POST /api/v1/security/block
     POST /api/v1/security/unblock

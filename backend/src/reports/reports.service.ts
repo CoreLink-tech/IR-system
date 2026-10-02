@@ -6,8 +6,9 @@ import {
   buildIncidentReport, buildTechnicalReport, renderIncidentReportText, summarizeIncident,
 } from './incident-report.builder';
 import { buildExecutiveSummary, renderExecutiveSummaryText } from './executive-summary.builder';
+import { buildSecuritySummary, renderSecuritySummaryText } from './security-summary.builder';
 import {
-  ExecutiveSummary, IncidentReport, PeriodFacts, TechnicalReport,
+  ExecutiveSummary, IncidentReport, PeriodFacts, SecurityPeriodFacts, SecuritySummary, TechnicalReport,
 } from './report.types';
 
 const SEVERITY_RANK: Record<string, number> = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1, INFO: 0 };
@@ -48,12 +49,130 @@ export class ReportsService {
     return renderExecutiveSummaryText(await this.executiveSummary(from, to));
   }
 
-  async gatherPeriodFacts(from: Date, to: Date, now: Date = new Date()): Promise<PeriodFacts> {
+  async securitySummary(from: Date, to: Date): Promise<SecuritySummary> {
+    return buildSecuritySummary(await this.gatherSecurityFacts(from, to));
+  }
+
+  async securitySummaryText(from: Date, to: Date): Promise<string> {
+    return renderSecuritySummaryText(await this.securitySummary(from, to));
+  }
+
+  private assertPeriod(from: Date, to: Date): number {
     if (!(from < to)) throw new BadRequestException('"from" must be earlier than "to"');
     const lengthMs = to.getTime() - from.getTime();
     if (lengthMs > MAX_PERIOD_DAYS * 86400000) {
       throw new BadRequestException(`Reporting period cannot exceed ${MAX_PERIOD_DAYS} days`);
     }
+    return lengthMs;
+  }
+
+  async gatherSecurityFacts(from: Date, to: Date, now: Date = new Date()): Promise<SecurityPeriodFacts> {
+    const lengthMs = this.assertPeriod(from, to);
+    const prevFrom = new Date(from.getTime() - lengthMs);
+    const range = { gte: from, lte: to };
+    const prevRange = { gte: prevFrom, lt: from };
+
+    const [
+      events, ipRows, prevEvents, prevIncidents, incidentRows, typeRows, riskRows,
+      topIpRows, blockRows, inForceRows, allowlisted, noRuleData, dailyEvents,
+    ] = await Promise.all([
+      this.prisma.securityEvent.count({ where: { occurredAt: range } }),
+      this.prisma.securityEvent.groupBy({ by: ['ipAddress'], where: { occurredAt: range, ipAddress: { not: null } } }),
+      this.prisma.securityEvent.count({ where: { occurredAt: prevRange } }),
+      this.prisma.securityIncident.count({ where: { createdAt: prevRange } }),
+      this.prisma.securityIncident.findMany({
+        where: { createdAt: range }, orderBy: { createdAt: 'desc' }, take: MAX_PERIOD_INCIDENTS,
+        select: { incidentId: true, severity: true, status: true, detectionRule: true, createdAt: true, resolvedAt: true, assignedTo: true },
+      }),
+      this.prisma.securityEvent.groupBy({
+        by: ['eventType'], where: { occurredAt: range }, _count: { _all: true },
+        orderBy: { _count: { eventType: 'desc' } }, take: 15,
+      }),
+      this.prisma.securityEvent.groupBy({ by: ['riskLevel'], where: { occurredAt: range }, _count: { _all: true } }),
+      this.prisma.securityEvent.groupBy({
+        by: ['ipAddress'], where: { occurredAt: range, ipAddress: { not: null } },
+        _count: { _all: true }, _max: { riskScore: true },
+        orderBy: { _count: { ipAddress: 'desc' } }, take: 10,
+      }),
+      this.prisma.securityIpBlock.findMany({
+        where: { action: 'BLOCK', createdAt: range }, orderBy: { createdAt: 'asc' },
+        select: { ipAddress: true, automatic: true }, take: 5000,
+      }),
+      this.prisma.securityIpBlock.findMany({
+        where: { action: 'BLOCK', active: true, OR: [{ isPermanent: true }, { expiresAt: { gt: now } }] },
+        select: { ipAddress: true },
+      }),
+      this.prisma.securityIpAllowlist.count(),
+      this.eventsWithoutRuleData(from, to),
+      this.dailyEventCounts(from, to),
+    ]);
+
+    const firstBlock = new Map<string, boolean>();
+    for (const b of blockRows as any[]) if (!firstBlock.has(b.ipAddress)) firstBlock.set(b.ipAddress, b.automatic);
+    const automatic = Array.from(firstBlock.values()).filter(Boolean).length;
+    const inForce = new Set((inForceRows as any[]).map((b) => b.ipAddress));
+
+    // Build one entry per UTC day so the series has no gaps for a chart.
+    const incidentsByDay = new Map<string, number>();
+    for (const i of incidentRows as any[]) {
+      const d = i.createdAt.toISOString().slice(0, 10);
+      incidentsByDay.set(d, (incidentsByDay.get(d) ?? 0) + 1);
+    }
+    const daily: SecurityPeriodFacts['daily'] = [];
+    const cursor = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()));
+    while (cursor <= to) {
+      const d = cursor.toISOString().slice(0, 10);
+      daily.push({ date: d, events: dailyEvents.get(d) ?? 0, incidents: incidentsByDay.get(d) ?? 0 });
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+
+    return {
+      generatedAt: now, from, to,
+      previous: { incidents: prevIncidents, events: prevEvents },
+      events, uniqueIps: ipRows.length,
+      eventsByType: (typeRows as any[]).map((r) => ({ type: r.eventType, count: r._count._all })),
+      eventsByRiskLevel: (riskRows as any[]).map((r) => ({ level: r.riskLevel, count: r._count._all }))
+        .sort((a, b) => b.count - a.count),
+      topSourceIps: (topIpRows as any[]).map((r) => ({
+        ip: r.ipAddress, events: r._count._all, peakRisk: r._max.riskScore ?? 0, blocked: inForce.has(r.ipAddress),
+      })),
+      incidents: (incidentRows as any[]).map((i) => ({
+        incidentId: i.incidentId, severity: i.severity, status: i.status, detectionRule: i.detectionRule,
+        createdAt: i.createdAt, resolvedAt: i.resolvedAt, assigned: !!i.assignedTo,
+      })),
+      daily,
+      blocks: { total: firstBlock.size, automatic, manual: firstBlock.size - automatic, stillInForce: inForce.size },
+      allowlisted,
+      eventsWithoutRuleData: noRuleData as number,
+      intelProviders: this.intel.providerNames,
+    };
+  }
+
+  /** Events recorded before rule detail was saved (column is SQL NULL). */
+  private async eventsWithoutRuleData(from: Date, to: Date): Promise<number> {
+    const rows: Array<{ c: bigint | number }> = await this.prisma.$queryRaw`
+      SELECT COUNT(*) AS c FROM security_events
+      WHERE occurredAt >= ${from} AND occurredAt <= ${to} AND matchedRules IS NULL`;
+    return Number(rows[0]?.c ?? 0);
+  }
+
+  /** Events per UTC day. Uses one grouped query instead of one query per day. */
+  private async dailyEventCounts(from: Date, to: Date): Promise<Map<string, number>> {
+    const rows: Array<{ d: Date | string; c: bigint | number }> = await this.prisma.$queryRaw`
+      SELECT DATE(occurredAt) AS d, COUNT(*) AS c
+      FROM security_events
+      WHERE occurredAt >= ${from} AND occurredAt <= ${to}
+      GROUP BY DATE(occurredAt)`;
+    const out = new Map<string, number>();
+    for (const r of rows) {
+      const key = r.d instanceof Date ? r.d.toISOString().slice(0, 10) : String(r.d).slice(0, 10);
+      out.set(key, Number(r.c));
+    }
+    return out;
+  }
+
+  async gatherPeriodFacts(from: Date, to: Date, now: Date = new Date()): Promise<PeriodFacts> {
+    const lengthMs = this.assertPeriod(from, to);
     const prevFrom = new Date(from.getTime() - lengthMs);
     const range = { gte: from, lte: to };
     const prevRange = { gte: prevFrom, lt: from };

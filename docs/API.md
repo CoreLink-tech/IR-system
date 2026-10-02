@@ -90,3 +90,34 @@ POST /api/v1/auth/users
       "requestId": "...",
       "timestamp": "2025-01-01T12:00:00.000Z"
     }
+
+## Reports
+
+All report endpoints are read-only, require an administrator login (JWT), send
+`Cache-Control: no-store`, and write each successful read to the audit log.
+Add `?format=text` to get a plain-text version ready for email or printing.
+Period endpoints accept `from` and `to` (ISO 8601) or `days` (1 to 366, default 7).
+The period cannot exceed 366 days. Unknown query parameters are rejected with 400.
+
+### GET /api/v1/reports/incidents/:id — JWT (any role)
+Plain-English incident report for a non-technical reader. `:id` can be the
+internal id or the public number (for example `INC-20261002-00001ABC`).
+Sections: whatHappened, whyItMatters, riskLevel, evidence, actionTaken,
+currentStatus, recommendedActions, plus a `limitations` list of things the report
+cannot confirm. Returns 404 for an unknown incident.
+
+### GET /api/v1/reports/technical/:id — JWT (SUPER_ADMIN, SECURITY_ADMIN, ANALYST)
+Technical detail for the same incident: raw rule codes and reasons, event counts by
+type, top request paths (query strings removed), IP intelligence, block history,
+timeline. JSON only.
+
+### GET /api/v1/reports/executive-summary — JWT (any role)
+Summary for the owner or CEO: posture (URGENT, ACTION_NEEDED, MONITORING,
+ALL_CLEAR), headline, key numbers, items needing attention, notable incidents,
+trend against the previous period of equal length, and limitations.
+
+### GET /api/v1/reports/security-summary — JWT (SUPER_ADMIN, SECURITY_ADMIN, ANALYST)
+Aggregate view for the security team and dashboard charts: events by type and risk
+level, incidents by severity, status and rule, top source addresses, response
+metrics (unassigned open incidents, mean time to resolve), blocking totals, and a
+daily series (UTC days) of events and incidents.

@@ -190,3 +190,47 @@ export interface ExecutiveSummary {
   trend: string;
   limitations: string[];
 }
+
+export interface SecurityPeriodFacts {
+  generatedAt: Date;
+  from: Date;
+  to: Date;
+  previous: { incidents: number; events: number };
+  events: number;
+  uniqueIps: number;
+  eventsByType: Array<{ type: string; count: number }>;
+  eventsByRiskLevel: Array<{ level: string; count: number }>;
+  topSourceIps: Array<{ ip: string; events: number; peakRisk: number; blocked: boolean }>;
+  incidents: Array<{
+    incidentId: string; severity: string; status: string; detectionRule: string | null;
+    createdAt: Date; resolvedAt: Date | null; assigned: boolean;
+  }>;
+  daily: Array<{ date: string; events: number; incidents: number }>;
+  blocks: { total: number; automatic: number; manual: number; stillInForce: number };
+  allowlisted: number;
+  eventsWithoutRuleData: number;
+  intelProviders: string[];
+}
+
+export interface SecuritySummary {
+  kind: 'security_summary';
+  generatedAt: string;
+  period: { from: string; to: string };
+  totals: { events: number; uniqueIps: number; incidents: number };
+  trend: { incidents: { current: number; previous: number }; events: { current: number; previous: number } };
+  eventsByType: Array<{ type: string; count: number }>;
+  eventsByRiskLevel: Array<{ level: string; count: number }>;
+  incidentsBySeverity: Array<{ severity: string; count: number }>;
+  incidentsByStatus: Array<{ status: string; count: number }>;
+  incidentsByRule: Array<{ code: string; title: string; count: number }>;
+  topSourceIps: Array<{ ip: string; events: number; peakRisk: number; blocked: boolean }>;
+  response: {
+    unassignedOpen: number;
+    resolved: number;
+    meanTimeToResolveMinutes: number | null;
+    oldestUnresolvedAt: string | null;
+  };
+  blocking: { total: number; automatic: number; manual: number; stillInForce: number; allowlisted: number };
+  daily: Array<{ date: string; events: number; incidents: number }>;
+  notes: string[];
+}
