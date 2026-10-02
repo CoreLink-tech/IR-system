@@ -74,6 +74,9 @@ model SecurityEvent {
   metadata      Json?
   riskScore     Int      @default(0)
   riskLevel     String   @default("NORMAL")
+  // Detection rules that fired for this event: [{ code, riskDelta, reason }].
+  // Recorded at detection time so reports can cite what the engine actually saw.
+  matchedRules  Json?
   occurredAt    DateTime
   createdAt     DateTime @default(now())
   apiKeyId      String?

@@ -13,6 +13,7 @@ import { IncidentsModule } from './incidents/incidents.module';
 import { IpsModule } from './ips/ips.module';
 import { BlockingModule } from './blocking/blocking.module';
 import { StatisticsModule } from './statistics/statistics.module';
+import { ReportsModule } from './reports/reports.module';
 import { SecuritySyncController } from './security/security.controller';
 
 @Module({
@@ -34,6 +35,7 @@ import { SecuritySyncController } from './security/security.controller';
     DetectionModule,
     EventsModule,
     StatisticsModule,
+    ReportsModule,
   ],
   controllers: [SecuritySyncController],
   providers: [

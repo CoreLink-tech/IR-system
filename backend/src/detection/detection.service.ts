@@ -105,7 +105,14 @@ export class DetectionService {
     const riskLevel = riskLevelFor(riskScore);
 
     await this.prisma.securityEvent.update({
-      where: { id: event.id }, data: { riskScore, riskLevel },
+      where: { id: event.id },
+      data: {
+        riskScore, riskLevel,
+        // Persist which rules fired and why, so reports can cite verified evidence.
+        // An empty array means "evaluated, nothing fired"; null means "recorded
+        // before this field existed". Reports rely on that difference.
+        matchedRules: matched as any,
+      },
     });
 
     let incidentId: string | null = null;
