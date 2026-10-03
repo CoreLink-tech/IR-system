@@ -23,6 +23,15 @@ export interface Narrative {
 const ip = (f: IncidentFacts) => f.incident.sourceIp ?? 'an unidentified address';
 const span = (f: IncidentFacts) => describeSpan(f.activity.firstEventAt, f.activity.lastEventAt);
 
+/**
+ * The detector's own recorded reason for a rule, with the first letter lowered so
+ * it reads inside a sentence. Returns null when no reason was saved.
+ */
+function detectorReason(f: IncidentFacts, code: string): string | null {
+  const r = f.activity.rulesFired.find((x) => x.code === code)?.lastReason;
+  return r ? r.charAt(0).toLowerCase() + r.slice(1) : null;
+}
+
 /** Events on which a given rule fired, falling back to a total when unknown. */
 function firedCount(f: IncidentFacts, code: string): number | null {
   const r = f.activity.rulesFired.find((x) => x.code === code);
@@ -206,6 +215,72 @@ export const NARRATIVES: Record<string, Narrative> = {
       `${plural(f.activity.sessionAnomalies, 'session anomaly event')} ${f.activity.sessionAnomalies === 1 ? 'was' : 'were'} recorded from ${ip(f)} ${span(f)}.`,
     why: 'Unusual session activity can mean someone is using a stolen login session.',
     actions: () => ['Consider signing out the affected sessions and asking the account holders to log in again.'],
+  },
+
+  possible_account_takeover: {
+    title: 'Successful login after repeated failures',
+    headline: (f) => `Possible account takeover (login from ${ip(f)})`,
+    what: (f) => {
+      const why = detectorReason(f, 'possible_account_takeover');
+      return `A successful login from ${ip(f)} ${span(f)} came right after repeated failed logins on the same account${why ? ` (${why})` : ''}.`;
+    },
+    why: 'A correct password straight after many wrong guesses usually means the guessing worked. The account may now be in the attacker\'s hands.',
+    actions: () => [
+      'Treat the account as compromised until proven otherwise: sign out its sessions and force a password reset.',
+      'Contact the account holder through a trusted channel to confirm whether they logged in.',
+      'Check what the account did after the login, especially orders, payment changes and address or email changes.',
+    ],
+  },
+
+  distributed_account_attack: {
+    title: 'One account attacked from many addresses',
+    headline: () => 'One account attacked from many different addresses',
+    what: (f) => {
+      const a = f.activity;
+      const why = detectorReason(f, 'distributed_account_attack');
+      return `One account received ${plural(a.failedLogins, 'failed login attempt')} from ${a.distinctIps} different addresses ${span(f)}${why ? ` (${why})` : ''}.`
+        + (f.signals.loginSuccessReported
+          ? (a.successfulLogins > 0 ? ` ${plural(a.successfulLogins, 'successful login')} on this account ${a.successfulLogins === 1 ? 'was' : 'were'} also recorded.` : ' No successful login on this account was recorded in the same period.')
+          : '');
+    },
+    why: 'Spreading guesses across many addresses avoids per-address limits. It points to a targeted attempt on one specific account, often a staff, vendor or high-value customer account.',
+    actions: (f) => [
+      ...(f.signals.loginSuccessReported && f.activity.successfulLogins > 0
+        ? ['A login on this account succeeded. Reset its password and sign out its sessions now.'] : []),
+      'Contact the account holder and ask them to use a new, unique password.',
+      'Consider temporarily locking the account or requiring extra verification for it.',
+    ],
+  },
+
+  distributed_login_attack: {
+    title: 'Login attack from many addresses',
+    headline: () => 'Coordinated login attack from many addresses',
+    what: (f) => {
+      const a = f.activity;
+      return `${plural(a.failedLogins, 'failed login attempt')} from ${a.distinctIps} different addresses were recorded ${span(f)}. `
+        + 'Each address made only a few attempts, which is how coordinated attacks avoid per-address limits.'
+        + (f.signals.loginSuccessReported && a.successfulLogins > 0 ? ` ${plural(a.successfulLogins, 'successful login')} from these addresses ${a.successfulLogins === 1 ? 'was' : 'were'} also recorded.` : '');
+    },
+    why: 'This is the pattern of a botnet or a stolen-credentials attack, where many machines each try a few passwords so that no single address looks suspicious.',
+    actions: () => [
+      'Turn on a CAPTCHA or temporary login throttling site-wide while the attack lasts.',
+      'Review the most active addresses in the technical report and block the worst offenders.',
+      'Watch for successful logins on accounts that were targeted; those accounts may be compromised.',
+    ],
+  },
+
+  impossible_travel: {
+    title: 'Logins from two countries in a short time',
+    headline: (f) => `Logins from two countries in a short time (${ip(f)})`,
+    what: (f) => {
+      const why = detectorReason(f, 'impossible_travel');
+      return `The same account logged in from two different countries within a short time ${span(f)}${why ? ` (${why})` : ''}.`;
+    },
+    why: 'A person cannot physically be in two countries within minutes. One of the two logins may be someone else using the account. VPN use can also cause this, so it is a warning sign rather than proof.',
+    actions: () => [
+      'Ask the account holder whether both logins were theirs, or whether they use a VPN.',
+      'If either login was not theirs, reset the password and sign out all sessions.',
+    ],
   },
 };
 

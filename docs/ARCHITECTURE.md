@@ -60,3 +60,5 @@ Only security_* tables are created. No FK to Pishon business tables.
 6. BlockingService creates temporary block.
 7. Pishon's next poll of /blocked-ips includes this IP.
 8. Pishon middleware rejects subsequent requests.
+
+See docs/DETECTION.md for the full rule list, incident grouping and escalation, and blocking behavior.

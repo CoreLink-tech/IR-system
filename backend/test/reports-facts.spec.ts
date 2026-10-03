@@ -29,7 +29,8 @@ function fakePrisma(over: any = {}) {
       aggregate: async ({ _max }: any) => _max?.riskScore
         ? { _max: { riskScore: Math.max(...events.map((e: any) => e.riskScore)) } }
         : { _min: { occurredAt: events[0].occurredAt }, _max: { occurredAt: events[events.length - 1].occurredAt } },
-      groupBy: async () => {
+      groupBy: async ({ by }: any) => {
+        if (by[0] === 'ipAddress') return [{ ipAddress: '198.51.100.7', _count: { _all: events.length } }];
         const m = new Map<string, number>();
         events.forEach((e: any) => m.set(e.eventType, (m.get(e.eventType) ?? 0) + 1));
         return Array.from(m.entries()).map(([eventType, n]) => ({ eventType, _count: { _all: n } }));

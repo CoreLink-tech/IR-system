@@ -14,13 +14,14 @@ function facts(over: Partial<IncidentFacts> = {}, act: Partial<IncidentFacts['ac
     generatedAt: NOW,
     incident: {
       id: 'i1', incidentId: 'INC-1', title: 'Credential stuffing suspected', severity: 'HIGH', status: 'OPEN',
-      riskScore: 35, detectionRule: 'brute_force_login', sourceIp: '198.51.100.7',
+      riskScore: 35, detectionRule: 'brute_force_login', sourceIp: '198.51.100.7', userId: null,
       createdAt: new Date('2026-10-02T14:05:00Z'), updatedAt: T1, resolvedAt: null, resolutionNotes: null, assignee: null,
     },
     rule: { code: 'brute_force_login', name: 'Brute-force login', description: 'x' },
+    scope: 'ip',
     window: { from: new Date('2026-10-02T13:05:00Z'), to: NOW, lookbackMinutes: 60 },
     activity: {
-      totalEvents: 7, firstEventAt: T0, lastEventAt: T1,
+      totalEvents: 7, distinctIps: 1, topIps: [{ ip: '198.51.100.7', count: 7 }], firstEventAt: T0, lastEventAt: T1,
       byType: [{ type: 'login_failed', count: 7 }],
       failedLogins: 7, successfulLogins: 0, distinctUsersFailed: 7,
       passwordResets: 0, paymentEvents: 0, sessionAnomalies: 0, adminAccesses: 0,
@@ -283,5 +284,91 @@ describe('executive summary', () => {
     expect(text).toContain('SECURITY SUMMARY');
     expect(text).toContain('KEY NUMBERS');
     expect(text).toContain('WHAT THIS SUMMARY CANNOT CONFIRM');
+  });
+});
+
+describe('reports for account and platform-wide incidents', () => {
+  const scoped = (scope: 'account' | 'global', rule: string, act: Partial<IncidentFacts['activity']> = {}, reasons: Record<string, string> = {}): IncidentFacts => {
+    const b = facts();
+    return {
+      ...b,
+      scope,
+      incident: { ...b.incident, sourceIp: null, userId: scope === 'account' ? 'u9' : null, detectionRule: rule, severity: 'HIGH' },
+      rule: { code: rule, name: rule, description: 'x' },
+      ip: null,
+      activity: {
+        ...b.activity, totalEvents: 45, failedLogins: 45, distinctIps: 18, distinctUsersFailed: 30, successfulLogins: 0,
+        rulesFired: [{ code: rule, name: rule, events: 10, maxRiskDelta: 40, lastReason: reasons[rule] }], ...act,
+      },
+    };
+  };
+
+  it('describes a platform-wide attack without blaming a single address', () => {
+    const r = buildIncidentReport(scoped('global', 'distributed_login_attack'));
+    expect(r.headline).toBe('Coordinated login attack from many addresses');
+    expect(r.sections.whatHappened).toContain('45 failed login attempts from 18 different addresses');
+    expect(r.sections.whatHappened).toContain('Each address made only a few attempts');
+    expect(r.sections.actionTaken.join(' ')).toContain('no single address was blocked automatically');
+    expect(r.sections.recommendedActions.join(' ')).not.toContain('Consider blocking the source address');
+    const ev = r.sections.evidence.map((e) => e.label);
+    expect(ev).toContain('Different source addresses');
+    expect(ev).not.toContain('Source address');
+  });
+
+  it('describes an attack on one account and quotes the detector reason', () => {
+    const r = buildIncidentReport(scoped('account', 'distributed_account_attack', { failedLogins: 12, distinctIps: 5 },
+      { distributed_account_attack: '12 failed logins on one account from 5 different addresses' }));
+    expect(r.sections.whatHappened).toContain('One account received 12 failed login attempts from 5 different addresses');
+    expect(r.sections.whatHappened).toContain('(12 failed logins on one account from 5 different addresses)');
+    expect(r.sections.whatHappened).toContain('No successful login on this account was recorded');
+    expect(r.sections.evidence.find((e) => e.label === 'Targeted')).toBeDefined();
+  });
+
+  it('tells the owner to act immediately when an account was attacked and a login succeeded', () => {
+    const r = buildIncidentReport(scoped('account', 'distributed_account_attack', { successfulLogins: 1 }));
+    expect(r.sections.whatHappened).toContain('1 successful login on this account was also recorded');
+    expect(r.sections.recommendedActions[1]).toContain('Reset its password and sign out its sessions now');
+  });
+
+  it('summarizes scoped incidents by the number of addresses', () => {
+    expect(summarizeIncident(scoped('global', 'distributed_login_attack'))).toBe(
+      'Coordinated login attack from many addresses. 45 events recorded. 18 addresses involved.');
+  });
+
+  it('account takeover wording advises treating the account as compromised', () => {
+    const b = facts();
+    const f: IncidentFacts = {
+      ...b, incident: { ...b.incident, detectionRule: 'possible_account_takeover', severity: 'HIGH' },
+      activity: { ...b.activity, rulesFired: [{ code: 'possible_account_takeover', name: 'x', events: 1, maxRiskDelta: 55, lastReason: 'Successful login after 5 failed logins on the same account from 2 addresses' }] },
+    };
+    const r = buildIncidentReport(f);
+    expect(r.headline).toBe('Possible account takeover (login from 198.51.100.7)');
+    expect(r.sections.whatHappened).toContain('came right after repeated failed logins on the same account (successful login after 5 failed logins');
+    expect(r.sections.recommendedActions.join(' ')).toContain('Treat the account as compromised');
+    expect(r.sections.whatHappened).not.toMatch(/possible_account_takeover/);
+  });
+
+  it('impossible travel is described as a warning sign, not proof', () => {
+    const b = facts();
+    const f: IncidentFacts = {
+      ...b, incident: { ...b.incident, detectionRule: 'impossible_travel' },
+      activity: { ...b.activity, rulesFired: [{ code: 'impossible_travel', name: 'x', events: 1, maxRiskDelta: 50, lastReason: 'Logins from NG and US 35 min apart' }] },
+    };
+    const r = buildIncidentReport(f);
+    expect(r.sections.whatHappened).toContain('(logins from NG and US 35 min apart)');
+    expect(r.sections.whyItMatters).toContain('warning sign rather than proof');
+  });
+
+  it('does not say "this address" about an incident that spans many addresses', () => {
+    const r = buildIncidentReport(scoped('global', 'distributed_login_attack', { lastEventAt: new Date(NOW.getTime() - 60_000) }));
+    expect(r.sections.currentStatus).toContain('Activity in this incident is still ongoing');
+    expect(r.sections.currentStatus).not.toContain('from this address');
+  });
+
+  it('technical report exposes scope, address count and top addresses', () => {
+    const t = buildTechnicalReport(scoped('global', 'distributed_login_attack', { topIps: [{ ip: '1.1.1.1', count: 4 }] }));
+    expect((t.incident as any).scope).toBe('global');
+    expect((t.activity as any).distinctIps).toBe(18);
+    expect((t.activity as any).topIps).toEqual([{ ip: '1.1.1.1', count: 4 }]);
   });
 });

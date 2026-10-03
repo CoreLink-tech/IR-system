@@ -7,6 +7,7 @@ import { IncidentFacts, RuleFired } from './report.types';
 
 /** Events earlier than the incident that still count as part of the same activity. */
 export const LOOKBACK_MINUTES = 60;
+export const CAMPAIGN_LOOKBACK_MINUTES = 15;
 /** Cap for per-event detail reads so a huge incident cannot exhaust memory. */
 export const SAMPLE_CAP = 2000;
 const LOGIN_SUCCESS_LOOKBACK_DAYS = 7;
@@ -31,21 +32,27 @@ export class FactsService {
     });
     if (!incident) throw new NotFoundException('Incident not found');
 
-    const from = new Date(incident.createdAt.getTime() - LOOKBACK_MINUTES * 60 * 1000);
-    const to = incident.resolvedAt ?? now;
     const ipAddress = incident.sourceIp;
+    const scope: IncidentFacts['scope'] = ipAddress ? 'ip' : incident.userId ? 'account' : 'global';
+    // Per-address incidents look back a full hour. Account and platform-wide
+    // incidents are built from short detection windows, so they look back 15 minutes.
+    const lookback = scope === 'ip' ? LOOKBACK_MINUTES : CAMPAIGN_LOOKBACK_MINUTES;
+    const from = new Date(incident.createdAt.getTime() - lookback * 60 * 1000);
+    const to = incident.resolvedAt ?? now;
+    const range = { gte: from, lte: to };
 
-    // Activity is everything from the source address inside the window. An incident
-    // with no source address falls back to the events attached to it.
-    const where: any = ipAddress
-      ? { ipAddress, occurredAt: { gte: from, lte: to } }
-      : { incidentId: incident.id };
+    // What counts as "the activity" depends on what the incident is about.
+    let where: any;
+    if (scope === 'ip') where = { ipAddress, occurredAt: range };
+    else if (scope === 'account') where = { userId: incident.userId, occurredAt: range };
+    else if (incident.detectionRule === 'distributed_login_attack') where = { eventType: 'login_failed', occurredAt: range };
+    else where = { incidentId: incident.id };
 
     const loginSuccessSince = new Date(now.getTime() - LOGIN_SUCCESS_LOOKBACK_DAYS * 86400000);
 
     const [
       total, bounds, byTypeRows, failedLoginUsers, attached, peak, sample,
-      loginSuccessAnywhere, ipRec, allowRow, blockRows, timelineRows, ruleRow, lifetimeEvents,
+      loginSuccessAnywhere, ipRec, allowRow, blockRows, timelineRows, ruleRow, lifetimeEvents, ipGroups,
     ] = await Promise.all([
       this.prisma.securityEvent.count({ where }),
       this.prisma.securityEvent.aggregate({ where, _min: { occurredAt: true }, _max: { occurredAt: true } }),
@@ -76,6 +83,9 @@ export class FactsService {
       this.prisma.securityIncidentTimeline.findMany({ where: { incidentId: incident.id }, orderBy: { createdAt: 'asc' } }),
       incident.detectionRule ? this.prisma.securityRule.findUnique({ where: { code: incident.detectionRule } }) : Promise.resolve(null),
       ipAddress ? this.prisma.securityEvent.count({ where: { ipAddress } }) : Promise.resolve(0),
+      this.prisma.securityEvent.groupBy({
+        by: ['ipAddress'], where: { ...where, ipAddress: { not: null } }, _count: { _all: true },
+      }),
     ]);
 
     const countOf = (type: string) => byTypeRows.find((r: any) => r.eventType === type)?._count._all ?? 0;
@@ -118,14 +128,19 @@ export class FactsService {
       incident: {
         id: incident.id, incidentId: incident.incidentId, title: incident.title,
         severity: incident.severity, status: incident.status, riskScore: incident.riskScore,
-        detectionRule: incident.detectionRule, sourceIp: incident.sourceIp,
+        detectionRule: incident.detectionRule, sourceIp: incident.sourceIp, userId: incident.userId ?? null,
         createdAt: incident.createdAt, updatedAt: incident.updatedAt, resolvedAt: incident.resolvedAt,
         resolutionNotes: incident.resolutionNotes, assignee: (incident as any).assignee?.email ?? null,
       },
       rule: ruleRow ? { code: ruleRow.code, name: ruleRow.name, description: ruleRow.description } : null,
-      window: { from, to, lookbackMinutes: LOOKBACK_MINUTES },
+      scope,
+      window: { from, to, lookbackMinutes: lookback },
       activity: {
         totalEvents: total,
+        distinctIps: (ipGroups as any[]).length,
+        topIps: (ipGroups as any[])
+          .map((g) => ({ ip: g.ipAddress as string, count: g._count._all as number }))
+          .sort((a, b) => b.count - a.count).slice(0, 5),
         firstEventAt: bounds._min.occurredAt ?? null,
         lastEventAt: bounds._max.occurredAt ?? null,
         byType: byTypeRows

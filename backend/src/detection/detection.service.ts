@@ -55,6 +55,7 @@ export class DetectionService {
     ]);
 
     const intel = ip ? await this.ipIntel.lookup(ip).catch(() => null) : null;
+    const correlation = await this.gatherCorrelation(event, ip);
 
     const ctx: RuleContext = {
       event: {
@@ -70,7 +71,9 @@ export class DetectionService {
           isVpn: intel.isVpn, isProxy: intel.isProxy, isTor: intel.isTor,
           isDatacenter: intel.isDatacenter, isMalicious: intel.isMalicious,
           reputationScore: intel.reputationScore,
+          country: intel.country,
         } : undefined,
+        correlation,
       },
     };
 
@@ -81,6 +84,7 @@ export class DetectionService {
     let shouldCreateIncident = false;
     let topIncidentSeverity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' = 'LOW';
     let topRuleCode = '';
+    let topScope: 'ip' | 'account' | 'global' = 'ip';
 
     for (const r of rules) {
       const def = BUILT_IN_RULES.find((d) => d.code === r.code);
@@ -97,6 +101,7 @@ export class DetectionService {
         if (order.indexOf(result.incidentSeverity!) > order.indexOf(topIncidentSeverity)) {
           topIncidentSeverity = result.incidentSeverity!;
           topRuleCode = r.code;
+          topScope = result.incidentScope ?? 'ip';
         }
       }
     }
@@ -115,13 +120,22 @@ export class DetectionService {
       },
     });
 
+    // Keep the address-level risk current. It is the highest event risk seen from
+    // this address in the last 24 hours, so it rises with an attack and decays after.
+    if (ip) await this.refreshIpRisk(ip).catch((err) => this.logger.warn(`IP risk refresh failed: ${err.message}`));
+
     let incidentId: string | null = null;
-    if (shouldCreateIncident && ip) {
+    const scope = topScope;
+    if (shouldCreateIncident && (ip || scope !== 'ip')) {
+      const ruleCode = topRuleCode || matched[0]?.code || 'detection';
       const incident = await this.incidents.createFromDetection({
-        sourceIp: ip, userId: event.userId, sessionId: event.sessionId,
-        ruleCode: topRuleCode || matched[0]?.code || 'detection',
+        scope,
+        sourceIp: scope === 'ip' ? ip : null,
+        userId: scope === 'global' ? null : event.userId,
+        sessionId: scope === 'ip' ? event.sessionId : null,
+        ruleCode,
         severity: topIncidentSeverity, riskScore,
-        title: this.buildIncidentTitle(topRuleCode || matched[0]?.code, ip),
+        title: this.buildIncidentTitle(ruleCode, ip, event.userId, scope),
         description: matched.map((m) => `- ${m.code}: ${m.reason ?? ''}`).join('\n'),
         eventId: event.id,
       });
@@ -140,7 +154,10 @@ export class DetectionService {
     return { riskScore, riskLevel, matchedRules: matched, incidentId };
   }
 
-  private buildIncidentTitle(ruleCode: string | undefined, ip: string): string {
+  private buildIncidentTitle(
+    ruleCode: string | undefined, ip: string | null, userId: string | null | undefined,
+    scope: 'ip' | 'account' | 'global',
+  ): string {
     const map: Record<string, string> = {
       brute_force_login: 'Brute-force login detected',
       credential_stuffing: 'Credential stuffing suspected',
@@ -154,7 +171,84 @@ export class DetectionService {
       order_id_enumeration: 'Order / product ID enumeration',
       payment_abuse_signal: 'Payment abuse signal',
       session_anomaly: 'Session anomaly',
+      possible_account_takeover: 'Possible account takeover',
+      distributed_account_attack: 'Distributed attack on one account',
+      distributed_login_attack: 'Distributed login attack',
+      impossible_travel: 'Impossible travel login',
     };
-    return `${map[ruleCode || ''] || 'Detection event'} from ${ip}`;
+    const base = map[ruleCode || ''] || 'Detection event';
+    if (scope === 'global') return base;
+    if (scope === 'account') return `${base} (account ${userId ?? 'unknown'})`;
+    return `${base} from ${ip}`;
+  }
+
+  /** Raises or lowers the stored address risk to match the last 24 hours of events. */
+  private async refreshIpRisk(ip: string) {
+    const since = new Date(Date.now() - 24 * 3600 * 1000);
+    const agg = await this.prisma.securityEvent.aggregate({
+      where: { ipAddress: ip, occurredAt: { gte: since } }, _max: { riskScore: true },
+    });
+    const score = agg._max.riskScore ?? 0;
+    await this.prisma.securityIp.updateMany({
+      where: { ipAddress: ip },
+      data: { riskScore: score, riskLevel: riskLevelFor(score) },
+    });
+  }
+
+  /**
+   * Cross-address and cross-account statistics. These are only queried for login
+   * events, so ordinary traffic does not pay for them.
+   */
+  private async gatherCorrelation(event: any, ip: string | null): Promise<RuleContext['stats']['correlation']> {
+    const isFailed = event.eventType === 'login_failed';
+    const isSuccess = event.eventType === 'login_success';
+    if (!isFailed && !isSuccess) return undefined;
+
+    const now = Date.now();
+    const userSince = new Date(now - 15 * 60 * 1000);
+    const globalSince = new Date(now - 10 * 60 * 1000);
+
+    let userFailedLogins = 0;
+    let userFailedFromIps = 0;
+    if (event.userId) {
+      const rows = await this.prisma.securityEvent.findMany({
+        where: { userId: event.userId, eventType: 'login_failed', occurredAt: { gte: userSince } },
+        select: { ipAddress: true }, take: 1000,
+      });
+      userFailedLogins = rows.length;
+      userFailedFromIps = new Set(rows.map((r) => r.ipAddress).filter(Boolean)).size;
+    }
+
+    let globalFailedLogins = 0;
+    let globalFailedFromIps = 0;
+    if (isFailed) {
+      const groups = await this.prisma.securityEvent.groupBy({
+        by: ['ipAddress'],
+        where: { eventType: 'login_failed', occurredAt: { gte: globalSince }, ipAddress: { not: null } },
+        _count: { _all: true },
+      });
+      globalFailedFromIps = groups.length;
+      globalFailedLogins = groups.reduce((n, g) => n + g._count._all, 0);
+    }
+
+    let previousLogin: NonNullable<RuleContext['stats']['correlation']>['previousLogin'];
+    if (isSuccess && event.userId && ip) {
+      const prev = await this.prisma.securityEvent.findFirst({
+        where: {
+          userId: event.userId, eventType: 'login_success', id: { not: event.id },
+          ipAddress: { not: ip }, occurredAt: { gte: new Date(now - 120 * 60 * 1000) },
+        },
+        orderBy: { occurredAt: 'desc' }, select: { ipAddress: true, occurredAt: true },
+      });
+      if (prev?.ipAddress) {
+        const prevIp = await this.prisma.securityIp.findUnique({ where: { ipAddress: prev.ipAddress } });
+        previousLogin = {
+          ipAddress: prev.ipAddress,
+          country: prevIp?.country ?? undefined,
+          minutesAgo: Math.max(0, Math.round((now - prev.occurredAt.getTime()) / 60000)),
+        };
+      }
+    }
+    return { userFailedLogins, userFailedFromIps, globalFailedLogins, globalFailedFromIps, previousLogin };
   }
 }

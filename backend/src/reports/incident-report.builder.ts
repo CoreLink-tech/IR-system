@@ -40,6 +40,11 @@ function narrativeOf(f: IncidentFacts) {
 }
 
 function blockSentences(f: IncidentFacts): string[] {
+  if (f.scope !== 'ip') {
+    return [f.scope === 'account'
+      ? 'This incident involves many addresses, so no single address was blocked automatically.'
+      : 'This incident involves many addresses, so no single address was blocked automatically. The most active addresses are listed in the technical report.'];
+  }
   const out: string[] = [];
   const blocks = f.blocks.filter((b) => b.action === 'BLOCK').sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   const unblocks = f.blocks.filter((b) => b.action === 'UNBLOCK').sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
@@ -121,9 +126,10 @@ function currentStatusText(f: IncidentFacts): string {
   const last = f.activity.lastEventAt;
   if (last) {
     const sinceMs = f.generatedAt.getTime() - last.getTime();
+    const subject = f.scope === 'ip' ? 'from this address' : 'in this incident';
     parts.push(sinceMs <= STILL_ACTIVE_MS
-      ? `Activity from this address is still ongoing; the latest event was ${humanDuration(sinceMs)} ago.`
-      : `No further activity from this address has been recorded since ${formatUtc(last)}.`);
+      ? `Activity ${subject} is still ongoing; the latest event was ${humanDuration(sinceMs)} ago.`
+      : `No further activity ${subject} has been recorded since ${formatUtc(last)}.`);
   }
   return parts.join(' ');
 }
@@ -139,7 +145,7 @@ function recommendedActions(f: IncidentFacts): string[] {
 
   const inForce = f.blocks.some((b) => b.action === 'BLOCK' && b.inForce);
   const level = riskLevelFor(peakRiskOf(f));
-  if (!inForce && !f.allowlisted && (level === 'HIGH' || level === 'CRITICAL')) {
+  if (f.scope === 'ip' && !inForce && !f.allowlisted && (level === 'HIGH' || level === 'CRITICAL')) {
     out.push('Consider blocking the source address.');
   }
   if (inForce) {
@@ -153,6 +159,7 @@ function evidenceOf(f: IncidentFacts): EvidenceItem[] {
   const a = f.activity;
   const ev: EvidenceItem[] = [];
   if (f.incident.sourceIp) ev.push({ label: 'Source address', value: f.incident.sourceIp });
+  if (f.scope === 'account') ev.push({ label: 'Targeted', value: 'One account (identified in the technical report)' });
   if (a.firstEventAt && a.lastEventAt) {
     ev.push({
       label: 'Activity period',
@@ -161,10 +168,17 @@ function evidenceOf(f: IncidentFacts): EvidenceItem[] {
         : `${formatUtc(a.firstEventAt)} to ${formatUtc(a.lastEventAt)}`,
     });
   }
-  ev.push({ label: 'Events recorded from this address', value: String(a.totalEvents) });
+  if (f.scope === 'ip') {
+    ev.push({ label: 'Events recorded from this address', value: String(a.totalEvents) });
+  } else {
+    ev.push({ label: 'Events recorded', value: String(a.totalEvents) });
+    ev.push({ label: 'Different source addresses', value: String(a.distinctIps) });
+  }
   if (a.failedLogins > 0) ev.push({ label: 'Failed login attempts', value: String(a.failedLogins) });
   if (a.failedLogins > 0) ev.push({ label: 'Accounts targeted', value: String(a.distinctUsersFailed) });
-  if (f.signals.loginSuccessReported) ev.push({ label: 'Successful logins from this address', value: String(a.successfulLogins) });
+  if (f.signals.loginSuccessReported) {
+    ev.push({ label: f.scope === 'ip' ? 'Successful logins from this address' : 'Successful logins', value: String(a.successfulLogins) });
+  }
   if (a.passwordResets > 0) ev.push({ label: 'Password reset requests', value: String(a.passwordResets) });
   if (a.paymentEvents > 0) ev.push({ label: 'Payment security events', value: String(a.paymentEvents) });
   if (a.sessionAnomalies > 0) ev.push({ label: 'Session anomaly events', value: String(a.sessionAnomalies) });
@@ -265,7 +279,9 @@ export function summarizeIncident(f: IncidentFacts): string {
   const n = narrativeOf(f);
   const blocked = f.blocks.some((b) => b.action === 'BLOCK' && b.inForce);
   const everBlocked = f.blocks.some((b) => b.action === 'BLOCK');
-  const blockClause = blocked ? 'The address is blocked.' : everBlocked ? 'The address was blocked earlier.' : 'No block applied.';
+  const blockClause = f.scope !== 'ip'
+    ? `${plural(f.activity.distinctIps, 'address', 'addresses')} involved.`
+    : blocked ? 'The address is blocked.' : everBlocked ? 'The address was blocked earlier.' : 'No block applied.';
   return `${n.headline(f)}. ${plural(f.activity.totalEvents, 'event')} recorded. ${blockClause}`;
 }
 
@@ -303,7 +319,7 @@ export function buildTechnicalReport(f: IncidentFacts): TechnicalReport {
     generatedAt: f.generatedAt.toISOString(),
     incidentId: i.incidentId,
     incident: {
-      id: i.id, title: i.title, severity: i.severity, status: i.status,
+      id: i.id, title: i.title, severity: i.severity, status: i.status, scope: f.scope, userId: i.userId,
       storedRiskScore: i.riskScore, peakEventRisk: a.peakRisk, effectiveRisk: peakRiskOf(f),
       effectiveRiskLevel: riskLevelFor(peakRiskOf(f)),
       detectionRule: i.detectionRule, sourceIp: i.sourceIp, assignee: i.assignee,
@@ -313,6 +329,7 @@ export function buildTechnicalReport(f: IncidentFacts): TechnicalReport {
     window: { from: f.window.from.toISOString(), to: f.window.to.toISOString(), lookbackMinutes: f.window.lookbackMinutes },
     activity: {
       totalEvents: a.totalEvents, attachedEvents: a.attachedEvents,
+      distinctIps: a.distinctIps, topIps: a.topIps,
       firstEventAt: a.firstEventAt?.toISOString() ?? null, lastEventAt: a.lastEventAt?.toISOString() ?? null,
       byType: a.byType, failedLogins: a.failedLogins, successfulLogins: a.successfulLogins,
       distinctUsersFailed: a.distinctUsersFailed, passwordResets: a.passwordResets,

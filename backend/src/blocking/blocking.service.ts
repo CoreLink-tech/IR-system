@@ -70,8 +70,25 @@ export class BlockingService {
     return created;
   }
 
+  /**
+   * Automatic blocking never overrides an administrator. An existing manual or
+   * permanent block is left exactly as it is. An existing automatic block is only
+   * renewed once less than half of its time remains, so a sustained attack does
+   * not create a new block record on every event.
+   */
   async autoBlock(ip: string, input: { reason: string; incidentId?: string }) {
     const ttl = Number(process.env.AUTO_BLOCK_TTL_MINUTES || 60);
+    const n = this.normalize(ip);
+    const now = new Date();
+    const existing = await this.prisma.securityIpBlock.findFirst({
+      where: { ipAddress: n, action: 'BLOCK', active: true, OR: [{ isPermanent: true }, { expiresAt: { gt: now } }] },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (existing) {
+      if (existing.isPermanent || !existing.automatic) return existing;
+      const remainingMs = (existing.expiresAt?.getTime() ?? 0) - now.getTime();
+      if (remainingMs > (ttl * 60 * 1000) / 2) return existing;
+    }
     return this.block(ip, {
       reason: input.reason, permanent: false, ttlMinutes: ttl,
       relatedIncidentId: input.incidentId, automatic: true,

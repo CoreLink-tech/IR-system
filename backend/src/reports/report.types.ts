@@ -49,16 +49,26 @@ export interface IncidentFacts {
     riskScore: number;
     detectionRule: string | null;
     sourceIp: string | null;
+    userId: string | null;
     createdAt: Date;
     updatedAt: Date;
     resolvedAt: Date | null;
     resolutionNotes: string | null;
     assignee: string | null;
   };
+  /**
+   * What the incident is about: one source address, one targeted account across
+   * many addresses, or an attack on the platform as a whole.
+   */
+  scope: 'ip' | 'account' | 'global';
   rule: { code: string; name: string; description: string } | null;
   window: { from: Date; to: Date; lookbackMinutes: number };
   activity: {
     totalEvents: number;
+    /** Distinct source addresses behind the counted events. */
+    distinctIps: number;
+    /** Most active source addresses, most events first. */
+    topIps: Array<{ ip: string; count: number }>;
     firstEventAt: Date | null;
     lastEventAt: Date | null;
     byType: Array<{ type: string; count: number }>;

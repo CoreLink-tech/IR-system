@@ -18,8 +18,38 @@ export interface RuleContext {
     ipIntel?: {
       isVpn: boolean; isProxy: boolean; isTor: boolean;
       isDatacenter: boolean; isMalicious: boolean; reputationScore: number;
+      country?: string;
+    };
+    /**
+     * Cross-address and cross-account statistics. Only filled in for the event
+     * types that need them, so a plain page view costs no extra queries.
+     */
+    correlation?: {
+      /** Failed logins against this event's account in the last 15 minutes, from any address. */
+      userFailedLogins: number;
+      /** Distinct addresses behind those failed logins. */
+      userFailedFromIps: number;
+      /** Failed logins across the whole platform in the last 10 minutes. */
+      globalFailedLogins: number;
+      /** Distinct addresses behind those failed logins. */
+      globalFailedFromIps: number;
+      /** The same account's previous successful login from a different address, if recent. */
+      previousLogin?: { ipAddress: string; country?: string; minutesAgo: number };
     };
   };
+}
+
+/**
+ * Compares two country values from IP intelligence providers. Providers disagree
+ * on format (a code such as "NG" versus a name such as "Nigeria"), so values in
+ * different formats cannot be compared. Returns null when it is not safe to say.
+ */
+export function sameCountry(a?: string | null, b?: string | null): boolean | null {
+  if (!a || !b) return null;
+  const x = a.trim().toLowerCase();
+  const y = b.trim().toLowerCase();
+  if ((x.length === 2) !== (y.length === 2)) return null;
+  return x === y;
 }
 
 export interface RuleResult {
@@ -28,6 +58,12 @@ export interface RuleResult {
   reason?: string;
   createIncident?: boolean;
   incidentSeverity?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  /**
+   * What an incident from this rule is about. 'ip' (default) groups by source
+   * address. 'account' groups by the targeted account across all addresses.
+   * 'global' groups an attack on the platform as a whole.
+   */
+  incidentScope?: 'ip' | 'account' | 'global';
 }
 
 export interface RuleDefinition {
@@ -214,6 +250,86 @@ export const BUILT_IN_RULES: RuleDefinition[] = [
       if (ctx.event.eventType !== 'session_anomaly') return { matched: false, riskDelta: 0 };
       if (ctx.stats.eventsLastWindow < cfg.threshold) return { matched: false, riskDelta: 0 };
       return { matched: true, riskDelta: cfg.riskDelta, reason: 'Repeated session anomalies' };
+    },
+  },
+
+  {
+    code: 'possible_account_takeover',
+    name: 'Possible account takeover',
+    description: 'A successful login on an account that just had several failed logins.',
+    priority: 12,
+    // Severity is HIGH by default. It is CRITICAL only when the failures came from
+    // several addresses, which points to a coordinated attack. A customer who simply
+    // mistyped their own password from one address must never be treated as critical.
+    defaultConfig: { minFailedLogins: 3, riskDelta: 65, criticalFailedLogins: 10, criticalFromIps: 3 },
+    evaluate: (ctx, cfg) => {
+      if (ctx.event.eventType !== 'login_success' || !ctx.event.userId) return { matched: false, riskDelta: 0 };
+      const c = ctx.stats.correlation;
+      if (!c || c.userFailedLogins < cfg.minFailedLogins) return { matched: false, riskDelta: 0 };
+      return {
+        matched: true, riskDelta: cfg.riskDelta,
+        reason: `Successful login after ${c.userFailedLogins} failed logins on the same account from ${c.userFailedFromIps} address${c.userFailedFromIps === 1 ? '' : 'es'}`,
+        createIncident: true,
+        incidentSeverity:
+          c.userFailedLogins >= cfg.criticalFailedLogins && c.userFailedFromIps >= cfg.criticalFromIps ? 'CRITICAL' : 'HIGH',
+      };
+    },
+  },
+  {
+    code: 'distributed_account_attack',
+    name: 'Distributed attack on one account',
+    description: 'Failed logins against one account from many different addresses.',
+    priority: 16,
+    defaultConfig: { distinctIpsThreshold: 4, riskDelta: 40 },
+    evaluate: (ctx, cfg) => {
+      if (ctx.event.eventType !== 'login_failed' || !ctx.event.userId) return { matched: false, riskDelta: 0 };
+      const c = ctx.stats.correlation;
+      if (!c || c.userFailedFromIps < cfg.distinctIpsThreshold) return { matched: false, riskDelta: 0 };
+      return {
+        matched: true, riskDelta: cfg.riskDelta,
+        reason: `${c.userFailedLogins} failed logins on one account from ${c.userFailedFromIps} different addresses`,
+        createIncident: true, incidentSeverity: 'HIGH', incidentScope: 'account',
+      };
+    },
+  },
+  {
+    code: 'distributed_login_attack',
+    name: 'Distributed login attack',
+    description: 'A surge of failed logins from many different addresses at once.',
+    priority: 17,
+    defaultConfig: { distinctIpsThreshold: 15, failedLoginsThreshold: 40, riskDelta: 45, criticalAtIps: 50 },
+    evaluate: (ctx, cfg) => {
+      if (ctx.event.eventType !== 'login_failed') return { matched: false, riskDelta: 0 };
+      const c = ctx.stats.correlation;
+      if (!c || c.globalFailedFromIps < cfg.distinctIpsThreshold || c.globalFailedLogins < cfg.failedLoginsThreshold) {
+        return { matched: false, riskDelta: 0 };
+      }
+      return {
+        matched: true, riskDelta: cfg.riskDelta,
+        reason: `${c.globalFailedLogins} failed logins from ${c.globalFailedFromIps} different addresses in 10 min`,
+        createIncident: true,
+        incidentSeverity: c.globalFailedFromIps >= cfg.criticalAtIps ? 'CRITICAL' : 'HIGH',
+        incidentScope: 'global',
+      };
+    },
+  },
+  {
+    code: 'impossible_travel',
+    name: 'Impossible travel',
+    description: 'The same account logged in from two different countries within a short time.',
+    priority: 18,
+    defaultConfig: { windowMinutes: 120, riskDelta: 50 },
+    evaluate: (ctx, cfg) => {
+      if (ctx.event.eventType !== 'login_success' || !ctx.event.userId) return { matched: false, riskDelta: 0 };
+      const prev = ctx.stats.correlation?.previousLogin;
+      if (!prev) return { matched: false, riskDelta: 0 };
+      // Only when both countries are known and comparable. Unknown is never treated as different.
+      if (sameCountry(prev.country, ctx.stats.ipIntel?.country) !== false) return { matched: false, riskDelta: 0 };
+      return {
+        matched: true, riskDelta: cfg.riskDelta,
+        reason: `Logins from ${prev.country} and ${ctx.stats.ipIntel!.country} ${prev.minutesAgo} min apart`,
+        createIncident: true, incidentSeverity: 'HIGH',
+      };
     },
   },
 ];
