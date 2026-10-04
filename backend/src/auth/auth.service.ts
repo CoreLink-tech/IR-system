@@ -1,10 +1,21 @@
-import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { ActorContext } from '../common/decorators/current-actor.decorator';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { createHash, randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AUDIT_ACTIONS, ROLES } from '../common/constants';
+
+/** Where a request came from, recorded in the audit log. */
+type Ctx = { ip?: string; userAgent?: string; requestId?: string };
+
+/**
+ * A real bcrypt hash of a random value. When an email is unknown or the account
+ * is disabled, the password is still compared against this so the response takes
+ * as long as a real login. Without it, response time reveals which emails exist.
+ */
+const DUMMY_HASH = bcrypt.hashSync(randomBytes(16).toString('hex'), 12);
 
 @Injectable()
 export class AuthService {
@@ -21,6 +32,7 @@ export class AuthService {
   async login(email: string, password: string, ctx: { ip?: string; userAgent?: string; requestId?: string }) {
     const user = await this.prisma.securityUser.findUnique({ where: { email: email.toLowerCase() } });
     if (!user || !user.isActive) {
+      await bcrypt.compare(password, DUMMY_HASH);
       await this.audit.log({
         requestId: ctx.requestId, actorType: 'ANONYMOUS', actorLabel: email,
         action: AUDIT_ACTIONS.LOGIN, result: 'FAILURE', ipAddress: ctx.ip, userAgent: ctx.userAgent,
@@ -75,7 +87,21 @@ export class AuthService {
     if (payload.type !== 'refresh') throw new UnauthorizedException('Invalid token type');
     const hash = this.hashRefresh(refreshToken);
     const stored = await this.prisma.securityRefreshToken.findUnique({ where: { tokenHash: hash } });
-    if (!stored || stored.revokedAt || stored.expiresAt < new Date()) {
+    if (stored && stored.revokedAt) {
+      // A token that was already used is being presented again. Either the owner or a
+      // thief holds a copy, and there is no way to tell which, so end every session.
+      await this.prisma.securityRefreshToken.updateMany({
+        where: { userId: stored.userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      await this.audit.log({
+        requestId: ctx.requestId, actorType: 'USER', actorId: stored.userId,
+        action: AUDIT_ACTIONS.REFRESH, result: 'FAILURE', ipAddress: ctx.ip, userAgent: ctx.userAgent,
+        metadata: { reason: 'refresh_token_reuse', sessionsRevoked: true },
+      });
+      throw new UnauthorizedException('Refresh token expired or revoked');
+    }
+    if (!stored || stored.expiresAt < new Date()) {
       throw new UnauthorizedException('Refresh token expired or revoked');
     }
     const user = await this.prisma.securityUser.findUnique({ where: { id: payload.sub } });
@@ -99,16 +125,58 @@ export class AuthService {
     });
   }
 
-  async createUser(dto: { email: string; password: string; name?: string; role: string }) {
+  async createUser(
+    dto: { email: string; password: string; name?: string; role: string },
+    actor?: ActorContext,
+  ) {
+    if (!Object.values(ROLES).includes(dto.role as any)) throw new BadRequestException('Invalid role');
     const email = dto.email.toLowerCase();
-    const existing = await this.prisma.securityUser.findUnique({ where: { email } });
-    if (existing) throw new ConflictException('Email already exists');
-    if (!Object.values(ROLES).includes(dto.role as any)) throw new ConflictException('Invalid role');
+    const exists = await this.prisma.securityUser.findUnique({ where: { email } });
+    if (exists) throw new ConflictException('Email already exists');
     const passwordHash = await bcrypt.hash(dto.password, 12);
     const user = await this.prisma.securityUser.create({
-      data: { email, passwordHash, name: dto.name, role: dto.role },
+      data: { email, passwordHash, name: dto.name ?? null, role: dto.role },
+    });
+    // Creating an account is one of the most sensitive things an administrator can do.
+    await this.audit.log({
+      requestId: actor?.requestId, actorType: actor ? 'USER' : 'SYSTEM', actorId: actor?.id,
+      actorLabel: actor?.label, action: AUDIT_ACTIONS.USER_CREATE, targetType: 'user', targetId: user.id,
+      result: 'SUCCESS', ipAddress: actor?.ip, userAgent: actor?.userAgent,
+      metadata: { email, role: dto.role },
     });
     return this.publicUser(user);
+  }
+
+  /**
+   * Changes the signed-in user's own password. The current password must be right,
+   * the new one must differ, and every refresh token is revoked so other devices
+   * must sign in again. Both outcomes are audited.
+   */
+  async changePassword(userId: string, currentPassword: string, newPassword: string, ctx: Ctx) {
+    const user = await this.prisma.securityUser.findUnique({ where: { id: userId } });
+    if (!user || !user.isActive) throw new UnauthorizedException();
+    const fail = async (reason: string) => {
+      await this.audit.log({
+        requestId: ctx.requestId, actorType: 'USER', actorId: user.id, actorLabel: user.email,
+        action: AUDIT_ACTIONS.PASSWORD_CHANGE, result: 'FAILURE', ipAddress: ctx.ip, userAgent: ctx.userAgent,
+        metadata: { reason },
+      });
+    };
+    if (!(await bcrypt.compare(currentPassword, user.passwordHash))) {
+      await fail('wrong_current_password');
+      throw new UnauthorizedException('Current password invalid');
+    }
+    if (currentPassword === newPassword) {
+      await fail('same_password');
+      throw new BadRequestException('New password must be different from the current one');
+    }
+    await this.prisma.securityUser.update({ where: { id: user.id }, data: { passwordHash: await bcrypt.hash(newPassword, 12) } });
+    await this.prisma.securityRefreshToken.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } });
+    await this.audit.log({
+      requestId: ctx.requestId, actorType: 'USER', actorId: user.id, actorLabel: user.email,
+      action: AUDIT_ACTIONS.PASSWORD_CHANGE, result: 'SUCCESS', ipAddress: ctx.ip, userAgent: ctx.userAgent,
+    });
+    return { ok: true };
   }
 
   private publicUser(user: any) {

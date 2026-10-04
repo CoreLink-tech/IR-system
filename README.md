@@ -15,6 +15,8 @@ Production-oriented incident response backend for Pishon Market.
     termux-setup-storage
     cd backend
     cp .env.example .env
+    npm run gen:secrets      # prints fresh secrets; paste them into .env
+                             # the server refuses to start with the sample placeholders
     npm install
     npx prisma generate
     npx prisma db push

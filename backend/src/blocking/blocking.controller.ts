@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { BlockingService } from './blocking.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -7,23 +7,12 @@ import { ROLES } from '../common/constants';
 import { AllowIpDto, BlockIpDto, UnblockIpDto } from './dto';
 import { ActorContext, CurrentActor } from '../common/decorators/current-actor.decorator';
 
+// The blocklist read routes (blocked-ips, blocks/history) live in SecuritySyncController,
+// which serves both administrators and the website's API key.
 @Controller('api/v1/security')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class BlockingController {
   constructor(private readonly service: BlockingService) {}
-
-  @Get('blocked-ips')
-  @Roles(ROLES.SUPER_ADMIN, ROLES.SECURITY_ADMIN, ROLES.ANALYST, ROLES.VIEWER)
-  async blocked() {
-    const data = await this.service.activeBlocks();
-    return { data };
-  }
-
-  @Get('blocks/history')
-  @Roles(ROLES.SUPER_ADMIN, ROLES.SECURITY_ADMIN, ROLES.ANALYST)
-  history(@Query('ip') ip?: string, @Query('limit') limit?: string) {
-    return this.service.history(ip, limit ? Number(limit) : 100);
-  }
 
   @Get('allowlist')
   @Roles(ROLES.SUPER_ADMIN, ROLES.SECURITY_ADMIN, ROLES.ANALYST, ROLES.VIEWER)

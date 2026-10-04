@@ -1,10 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { isPrivateIp } from '../common/utils/ip.util';
-import { riskLevelFor } from '../common/utils/risk.util';
 import { IpIntelligenceService } from './ip-intelligence.service';
-
-const FAILED_LOGIN_WEIGHT = 3;
 
 @Injectable()
 export class IpsService {
@@ -25,18 +22,14 @@ export class IpsService {
       return;
     }
 
-    const failedLogins = existing.failedLogins + failed;
-    const rawScore = failedLogins * FAILED_LOGIN_WEIGHT + (existing.isMalicious ? 30 : 0);
-    const riskScore = Math.max(0, Math.min(100, rawScore));
-
+    // Risk is owned by the detection engine, which sets it from recent event risk
+    // after every event. Touch only maintains counters and timestamps.
     await this.prisma.securityIp.update({
       where: { ipAddress: ip },
       data: {
         lastSeenAt: now,
         eventCount: { increment: 1 },
         failedLogins: { increment: failed },
-        riskScore,
-        riskLevel: riskLevelFor(riskScore),
       },
     });
   }

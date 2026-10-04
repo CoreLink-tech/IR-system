@@ -8,9 +8,12 @@ import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 import { RequestIdInterceptor } from './common/interceptors/request-id.interceptor';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 import { AuditService } from './audit/audit.service';
+import { assertValidConfig } from './config/validate-config';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
+  // Fail before opening any port if a secret is missing, weak or still a placeholder.
+  assertValidConfig().forEach((w) => logger.warn(w));
   const app = await NestFactory.create(AppModule, { bufferLogs: false });
 
   app.use(helmet());

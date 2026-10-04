@@ -3,7 +3,11 @@ import { normalizeIp, isPrivateIp } from '../src/common/utils/ip.util';
 describe('IP utilities', () => {
   describe('normalizeIp', () => {
     it('normalizes IPv4', () => {
-      expect(normalizeIp('192.168.001.001')).toBe('192.168.1.1');
+      expect(normalizeIp(' 192.168.1.1 ')).toBe('192.168.1.1');
+    });
+    it('rejects leading zeros, which other software reads as octal and so as a different address', () => {
+      expect(normalizeIp('192.168.001.001')).toBeUndefined();
+      expect(normalizeIp('010.0.0.1')).toBeUndefined();
     });
     it('strips IPv4-mapped IPv6 prefix', () => {
       expect(normalizeIp('::ffff:203.0.113.5')).toBe('203.0.113.5');

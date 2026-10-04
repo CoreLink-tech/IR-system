@@ -86,8 +86,12 @@ final class SecurityClient
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_CUSTOMREQUEST  => $method,
                 CURLOPT_HTTPHEADER     => $headers,
-                CURLOPT_TIMEOUT        => $this->timeout,
-                CURLOPT_CONNECTTIMEOUT => $this->timeout,
+                // Milliseconds, not seconds. CURLOPT_TIMEOUT only takes whole seconds, so a
+                // value like 0.5 would be cut to 0, which means "wait forever" and could
+                // hang the website whenever the security API is slow.
+                CURLOPT_TIMEOUT_MS        => (int) round($this->timeout * 1000),
+                CURLOPT_CONNECTTIMEOUT_MS => (int) round($this->timeout * 1000),
+                CURLOPT_NOSIGNAL          => true,
                 CURLOPT_SSL_VERIFYPEER => true,
                 CURLOPT_SSL_VERIFYHOST => 2,
             ]);

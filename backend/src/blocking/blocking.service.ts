@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { normalizeIp } from '../common/utils/ip.util';
+import { isInternalAddress, normalizeIp } from '../common/utils/ip.util';
 import { AuditService } from '../audit/audit.service';
 import { AUDIT_ACTIONS } from '../common/constants';
 
@@ -30,6 +30,11 @@ export class BlockingService {
   }) {
     const n = this.normalize(ip);
 
+    // Blocking a loopback, private or link-local address could lock the website out
+    // of its own security system or cut off traffic arriving through an internal proxy.
+    if (isInternalAddress(n)) {
+      throw new BadRequestException('Internal and private addresses cannot be blocked');
+    }
     if (await this.isAllowed(n)) {
       throw new BadRequestException('IP is on the allowlist');
     }
@@ -79,6 +84,8 @@ export class BlockingService {
   async autoBlock(ip: string, input: { reason: string; incidentId?: string }) {
     const ttl = Number(process.env.AUTO_BLOCK_TTL_MINUTES || 60);
     const n = this.normalize(ip);
+    // Nothing to do, and not an error, for addresses that must never be blocked.
+    if (isInternalAddress(n) || (await this.isAllowed(n))) return null;
     const now = new Date();
     const existing = await this.prisma.securityIpBlock.findFirst({
       where: { ipAddress: n, action: 'BLOCK', active: true, OR: [{ isPermanent: true }, { expiresAt: { gt: now } }] },

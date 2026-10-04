@@ -16,7 +16,9 @@ export class IncidentsController {
   @Get()
   @Roles(ROLES.SUPER_ADMIN, ROLES.SECURITY_ADMIN, ROLES.ANALYST, ROLES.VIEWER)
   async list(@Query() q: any) {
-    const p = parsePagination(q, { sortBy: 'createdAt' });
+    const p = parsePagination(q, {
+      sortBy: 'createdAt', allowedSort: ['createdAt', 'updatedAt', 'severity', 'riskScore', 'status'],
+    });
     const { data, total } = await this.service.list({
       ...p,
       filters: { status: q.status, severity: q.severity, sourceIp: q.sourceIp, assignedTo: q.assignedTo },
@@ -26,7 +28,16 @@ export class IncidentsController {
 
   @Get(':id')
   @Roles(ROLES.SUPER_ADMIN, ROLES.SECURITY_ADMIN, ROLES.ANALYST, ROLES.VIEWER)
-  findOne(@Param('id') id: string) { return this.service.findOne(id); }
+  async findOne(@Param('id') id: string, @CurrentActor() actor: ActorContext) {
+    const incident = await this.service.findOne(id);
+    // Viewers get the incident and its timeline, but not the raw events behind it
+    // (addresses, user ids and request detail). They use the plain-English report.
+    if (actor.role === ROLES.VIEWER) {
+      const { events: _omitted, ...rest } = incident as any;
+      return rest;
+    }
+    return incident;
+  }
 
   @Post(':id/status')
   @Roles(ROLES.SUPER_ADMIN, ROLES.SECURITY_ADMIN, ROLES.ANALYST)

@@ -54,7 +54,11 @@ Forces a fresh provider lookup, bypassing the 24 hour cache. Returns the merged
 intelligence and the list of active providers. Returns 404 for an invalid address.
 
 ### GET /api/v1/security/blocked-ips — JWT or API key with block:read
-Returns only active blocks. Used by Pishon middleware.
+Returns only active blocks. Used by Pishon middleware. The same route serves
+administrators (any role) and the website's key (scope `block:read`).
+
+### GET /api/v1/security/blocks/history — JWT (SUPER_ADMIN, SECURITY_ADMIN, ANALYST) or API key with block:read
+Optional `ip` and `limit` (1 to 500, default 100).
 
 ### POST /api/v1/security/block — JWT (SUPER_ADMIN, SECURITY_ADMIN)
 Body: { ipAddress, reason, permanent, ttlMinutes, relatedIncidentId }

@@ -164,6 +164,9 @@ export class IncidentsService {
     if (notes) data.resolutionNotes = notes;
     if (status === INCIDENT_STATUS.RESOLVED || status === INCIDENT_STATUS.FALSE_POSITIVE) {
       data.resolvedAt = new Date();
+    } else if (incident.resolvedAt) {
+      // Reopened: it is no longer resolved, so the old resolution time must not linger.
+      data.resolvedAt = null;
     }
 
     const updated = await this.prisma.securityIncident.update({ where: { id }, data });

@@ -1,11 +1,13 @@
-import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, NotFoundException, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { EventsService } from './events.service';
 import { CreateEventDto } from './dto';
 import { ApiKeyGuard } from '../common/guards/api-key.guard';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
 import { ScopesGuard } from '../common/guards/scopes.guard';
 import { Scopes } from '../common/decorators/scopes.decorator';
-import { SCOPES } from '../common/constants';
+import { ROLES, SCOPES } from '../common/constants';
 import { extractIp } from '../common/utils/ip.util';
 import { parsePagination, toPaginated } from '../common/utils/pagination.util';
 
@@ -25,10 +27,16 @@ export class EventsController {
     });
   }
 
-  @UseGuards(JwtAuthGuard)
+  // Raw events contain IP addresses, user ids and request detail, so they are for
+  // analysts and above. Viewers use the plain-English reports instead.
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(ROLES.SUPER_ADMIN, ROLES.SECURITY_ADMIN, ROLES.ANALYST)
   @Get()
   async list(@Query() q: any) {
-    const p = parsePagination(q, { sortBy: 'occurredAt' });
+    const p = parsePagination(q, {
+      sortBy: 'occurredAt',
+      allowedSort: ['occurredAt', 'createdAt', 'severity', 'riskScore', 'eventType', 'ipAddress'],
+    });
     const { data, total } = await this.events.list({
       ...p,
       filters: {
@@ -39,7 +47,12 @@ export class EventsController {
     return toPaginated(data, total, p.page, p.pageSize);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(ROLES.SUPER_ADMIN, ROLES.SECURITY_ADMIN, ROLES.ANALYST)
   @Get(':id')
-  findOne(@Param('id') id: string) { return this.events.findOne(id); }
+  async findOne(@Param('id') id: string) {
+    const event = await this.events.findOne(id);
+    if (!event) throw new NotFoundException('Event not found');
+    return event;
+  }
 }

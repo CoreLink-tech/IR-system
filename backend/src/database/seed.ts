@@ -8,7 +8,16 @@ async function main() {
   const prisma = new PrismaClient();
 
   const email = (process.env.BOOTSTRAP_ADMIN_EMAIL || 'admin@pishon.local').toLowerCase();
-  const password = process.env.BOOTSTRAP_ADMIN_PASSWORD || 'ChangeMeStrong!123';
+  const DEFAULT_PASSWORD = 'ChangeMeStrong!123';
+  const password = process.env.BOOTSTRAP_ADMIN_PASSWORD || DEFAULT_PASSWORD;
+  // The default is public. It is tolerated on a developer machine, never in production.
+  if (password === DEFAULT_PASSWORD || /change[_-]?me/i.test(password)) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('Set BOOTSTRAP_ADMIN_PASSWORD to a strong value before seeding production. Generate one with: npm run gen:secrets');
+    }
+    console.warn('[seed] WARNING: using a public default admin password. Set BOOTSTRAP_ADMIN_PASSWORD.');
+  }
+  if (password.length < 12) throw new Error('BOOTSTRAP_ADMIN_PASSWORD must be at least 12 characters.');
   const name = process.env.BOOTSTRAP_ADMIN_NAME || 'Initial Admin';
 
   const hash = await bcrypt.hash(password, 12);

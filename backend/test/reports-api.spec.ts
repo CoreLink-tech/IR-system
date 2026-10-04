@@ -1,6 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { ExecutionContext } from '@nestjs/common';
+import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import request from 'supertest';
 import { ReportsController } from '../src/reports/reports.controller';
 import { ReportsService } from '../src/reports/reports.service';
@@ -15,7 +15,7 @@ class FakeAuth {
   canActivate(ctx: ExecutionContext) {
     const req = ctx.switchToHttp().getRequest();
     const role = req.headers['x-role'];
-    if (!role) return false;
+    if (!role) throw new UnauthorizedException();
     req.actor = { type: 'USER', id: 'u1', label: 'tester@pishon.ng', role, ip: '10.0.0.1' };
     return true;
   }
@@ -54,7 +54,7 @@ describe('Reports API', () => {
   };
 
   it('rejects unauthenticated requests', async () => {
-    await get('/api/v1/reports/incidents/abc').expect(403);
+    await get('/api/v1/reports/incidents/abc').expect(401);
     expect(svc.incidentReport).not.toHaveBeenCalled();
   });
 

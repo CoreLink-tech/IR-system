@@ -1,19 +1,40 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEventDto } from './dto';
 import { normalizeIp } from '../common/utils/ip.util';
+import { parseDateParam } from '../common/utils/pagination.util';
 import { AuditService } from '../audit/audit.service';
 import { AUDIT_ACTIONS } from '../common/constants';
 import { DetectionService } from '../detection/detection.service';
 import { IpsService } from '../ips/ips.service';
 
-const FORBIDDEN_KEYS = [
-  'password','passwd','pwd','secret','api_key','apikey',
-  'access_token','refresh_token','authorization','credit_card',
-  'card_number','cvv','pin',
+/**
+ * Words that mark a field as sensitive. Longer words match anywhere in a key
+ * ("user_password", "apiKey"). Short words (pin, otp, cvv, ssn) must be a whole
+ * word, so "shipping_address" is kept while "card_pin" is redacted.
+ */
+const SENSITIVE_SUBSTRINGS = [
+  'password', 'passwd', 'pwd', 'secret', 'token', 'apikey', 'authorization',
+  'cookie', 'creditcard', 'cardnumber', 'privatekey', 'bearer', 'credential',
 ];
+const SENSITIVE_WORDS = new Set(['pin', 'cvv', 'cvc', 'otp', 'ssn', 'auth', 'key']);
 
-function sanitizeMetadata(value: unknown, depth = 0): any {
+function words(key: string): string[] {
+  // Split on separators and camelCase boundaries: "cardPin" -> ["card", "pin"].
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+}
+
+export function isSensitiveKey(key: string): boolean {
+  const compact = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (SENSITIVE_SUBSTRINGS.some((w) => compact.includes(w))) return true;
+  return words(key).some((w) => SENSITIVE_WORDS.has(w));
+}
+
+export function sanitizeMetadata(value: unknown, depth = 0): any {
   if (depth > 6) return '[truncated]';
   if (value === null || value === undefined) return value;
   if (typeof value === 'string') return value.length > 4096 ? value.substring(0, 4096) + '...' : value;
@@ -22,16 +43,38 @@ function sanitizeMetadata(value: unknown, depth = 0): any {
   if (typeof value === 'object') {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      if (FORBIDDEN_KEYS.some((fk) => k.toLowerCase().includes(fk))) out[k] = '[REDACTED]';
-      else out[k] = sanitizeMetadata(v, depth + 1);
+      out[k] = isSensitiveKey(k) ? '[REDACTED]' : sanitizeMetadata(v, depth + 1);
     }
     return out;
   }
   return String(value);
 }
 
+/**
+ * Removes the values of sensitive query parameters from a request path, for
+ * example a password reset token in "/reset?token=abc". Every other part of the
+ * path is kept, so detection can still see injection attempts in it.
+ */
+export function redactPath(path: string | undefined): string | undefined {
+  if (!path) return path;
+  const q = path.indexOf('?');
+  if (q < 0) return path;
+  const head = path.slice(0, q + 1);
+  const rest = path.slice(q + 1).replace(/([^&=#]+)=([^&#]*)/g, (m, name: string) => {
+    let decoded = name;
+    try { decoded = decodeURIComponent(name); } catch { /* keep raw name */ }
+    return isSensitiveKey(decoded) ? `${name}=[REDACTED]` : m;
+  });
+  return head + rest;
+}
+
+/** Events may be this far ahead of the server clock before they are rejected. */
+const MAX_CLOCK_SKEW_MS = 5 * 60 * 1000;
+
 @Injectable()
 export class EventsService {
+  private readonly logger = new Logger('EventsService');
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -43,6 +86,10 @@ export class EventsService {
     const ipAddress = dto.ip_address ? normalizeIp(dto.ip_address) : ctx.ip ? normalizeIp(ctx.ip) : undefined;
     const occurredAt = dto.timestamp ? new Date(dto.timestamp) : new Date();
     if (isNaN(occurredAt.getTime())) throw new BadRequestException('Invalid timestamp');
+    // A timestamp in the future would corrupt the time windows detection relies on.
+    if (occurredAt.getTime() > Date.now() + MAX_CLOCK_SKEW_MS) {
+      throw new BadRequestException('Timestamp is in the future');
+    }
 
     const metadata = sanitizeMetadata(dto.metadata ?? {});
 
@@ -50,16 +97,22 @@ export class EventsService {
       data: {
         eventType: dto.event_type, severity: dto.severity, ipAddress,
         userId: dto.user_id, sessionId: dto.session_id, userAgent: dto.user_agent,
-        requestMethod: dto.request_method, requestPath: dto.request_path,
+        requestMethod: dto.request_method, requestPath: redactPath(dto.request_path),
         requestId: dto.request_id, metadata, occurredAt, apiKeyId: ctx.apiKeyId,
       },
     });
 
     if (ipAddress) {
-      await this.ips.touch(ipAddress, dto.event_type).catch(() => void 0);
+      await this.ips.touch(ipAddress, dto.event_type)
+        .catch((err) => this.logger.warn(`IP tracking failed for event ${created.id}: ${err.message}`));
     }
 
-    const detectionResult = await this.detection.processEvent(created).catch(() => null);
+    // The event is already stored. If detection fails the event is still accepted,
+    // but the failure must be visible in the logs, never silent.
+    const detectionResult = await this.detection.processEvent(created).catch((err) => {
+      this.logger.error(`Detection failed for event ${created.id}: ${err.message}`, err.stack);
+      return null;
+    });
 
     await this.audit.log({
       requestId: ctx.requestId, actorType: 'API_KEY', actorId: ctx.apiKeyId,
@@ -88,10 +141,12 @@ export class EventsService {
     if (f.severity) where.severity = f.severity;
     if (f.ipAddress) where.ipAddress = normalizeIp(f.ipAddress) || f.ipAddress;
     if (f.userId) where.userId = f.userId;
-    if (f.from || f.to) {
+    const from = parseDateParam(f.from, 'from');
+    const to = parseDateParam(f.to, 'to');
+    if (from || to) {
       where.occurredAt = {};
-      if (f.from) where.occurredAt.gte = new Date(f.from);
-      if (f.to) where.occurredAt.lte = new Date(f.to);
+      if (from) where.occurredAt.gte = from;
+      if (to) where.occurredAt.lte = to;
     }
     const [data, total] = await Promise.all([
       this.prisma.securityEvent.findMany({ where, skip: params.skip, take: params.take, orderBy: { [params.sortBy]: params.sortOrder } }),

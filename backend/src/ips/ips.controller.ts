@@ -5,6 +5,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { ROLES } from '../common/constants';
 import { normalizeIp } from '../common/utils/ip.util';
+import { ActorContext, CurrentActor } from '../common/decorators/current-actor.decorator';
 import { IpIntelligenceService } from './ip-intelligence.service';
 
 @Controller('api/v1/ips')
@@ -17,9 +18,12 @@ export class IpsController {
 
   @Get(':ip')
   @Roles(ROLES.SUPER_ADMIN, ROLES.SECURITY_ADMIN, ROLES.ANALYST, ROLES.VIEWER)
-  detail(@Param('ip') ip: string) {
+  async detail(@Param('ip') ip: string, @CurrentActor() actor: ActorContext) {
     const normalized = normalizeIp(ip) || ip;
-    return this.service.detail(normalized);
+    const detail = await this.service.detail(normalized);
+    // Viewers see the address, its risk and its blocks, but not the raw event history.
+    if (actor.role === ROLES.VIEWER) return { ...detail, events: [] };
+    return detail;
   }
 
   /** Force a fresh provider lookup, bypassing the cache. */

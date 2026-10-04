@@ -48,6 +48,7 @@ export const RISK_LEVEL = {
 
 export const AUDIT_ACTIONS = {
   LOGIN: 'auth.login', LOGOUT: 'auth.logout', REFRESH: 'auth.refresh',
+  PASSWORD_CHANGE: 'auth.password_change', USER_CREATE: 'user.create',
   API_KEY_CREATE: 'api_key.create', API_KEY_REVOKE: 'api_key.revoke', API_KEY_ROTATE: 'api_key.rotate',
   EVENT_INGEST: 'event.ingest',
   INCIDENT_CREATE: 'incident.create', INCIDENT_UPDATE: 'incident.update', INCIDENT_ASSIGN: 'incident.assign',
