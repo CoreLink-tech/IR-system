@@ -127,28 +127,40 @@ describe('existing rules (regression coverage)', () => {
   });
 });
 
-/** Fake of the incident table, enough for grouping and escalation. */
-function incidentStore(seed: any[] = []) {
-  const rows: any[] = seed.map((r, i) => ({ id: `inc${i}`, createdAt: new Date(), updatedAt: new Date(), status: 'OPEN', ...r }));
+/**
+ * Fake of the incident table, enough for grouping and escalation. Like the real table it
+ * refuses a second row with the same openKey (error code P2002), which is what makes
+ * parallel requests converge on one incident.
+ */
+function incidentStore(seed: any[] = [], opts: { staleReads?: number } = {}) {
+  const rows: any[] = seed.map((r, i) => ({
+    id: `inc${i}`, createdAt: new Date(), updatedAt: new Date(), status: 'OPEN',
+    openKey: r.openKey !== undefined ? r.openKey : (r.sourceIp ? `ip:${r.sourceIp}` : null), ...r,
+  }));
   const timeline: any[] = [];
   const events: any[] = [];
-  let findWhere: any;
+  let staleReads = opts.staleReads ?? 0;
   const matches = (row: any, where: any): boolean => Object.entries(where).every(([k, v]: [string, any]) => {
     if (k === 'status') return v.in.includes(row.status);
-    if (k === 'updatedAt') return row.updatedAt >= v.gte;
+    if (k === 'updatedAt') return v.lt ? row.updatedAt < v.lt : row.updatedAt >= v.gte;
     return row[k] === v;
   });
   const prisma: any = {
     securityIncident: {
-      findFirst: async ({ where }: any) => { findWhere = where; return rows.find((r) => matches(r, where)) ?? null; },
+      // staleReads simulates parallel requests that all looked before anyone had created the incident.
+      findFirst: async ({ where }: any) => { if (staleReads > 0) { staleReads--; return null; } return rows.find((r) => matches(r, where)) ?? null; },
+      updateMany: async ({ where, data }: any) => { const hit = rows.filter((r) => matches(r, where)); hit.forEach((r) => Object.assign(r, data)); return { count: hit.length }; },
       update: async ({ where, data }: any) => { Object.assign(rows.find((r) => r.id === where.id)!, data); },
-      create: async ({ data }: any) => { const r = { id: `inc${rows.length}`, createdAt: new Date(), updatedAt: new Date(), ...data }; rows.push(r); return r; },
+      create: async ({ data }: any) => {
+        if (data.openKey && rows.some((r) => r.openKey === data.openKey)) throw Object.assign(new Error('Unique constraint failed on openKey'), { code: 'P2002' });
+        const r = { id: `inc${rows.length}`, createdAt: new Date(), updatedAt: new Date(), ...data }; rows.push(r); return r;
+      },
     },
     securityIncidentTimeline: { create: async ({ data }: any) => { timeline.push(data); } },
     securityEvent: { update: async ({ where, data }: any) => { events.push({ id: where.id, ...data }); } },
   };
   const audit: any = { log: jest.fn(async () => undefined) };
-  return { svc: new IncidentsService(prisma, audit), rows, timeline, events, get where() { return findWhere; } };
+  return { svc: new IncidentsService(prisma, audit), rows, timeline, events };
 }
 
 const base = {
@@ -226,24 +238,113 @@ describe('incident grouping and escalation', () => {
   });
 
   it('does not attach to closed or contained incidents', async () => {
-    const s = incidentStore([{ sourceIp: '198.51.100.7', detectionRule: 'x', severity: 'HIGH', riskScore: 50, status: 'RESOLVED' }]);
+    const s = incidentStore([{ sourceIp: '198.51.100.7', detectionRule: 'x', severity: 'HIGH', riskScore: 50, status: 'RESOLVED', openKey: null }]);
     await s.svc.createFromDetection(base);
     expect(s.rows).toHaveLength(2);
   });
 });
 
+describe('parallel requests from one attacker', () => {
+  it('converge on a single incident even when every request looked before anyone created it', async () => {
+    const s = incidentStore([], { staleReads: 12 });
+    const calls = Array.from({ length: 12 }, (_, i) => s.svc.createFromDetection({ ...base, eventId: `ev${i}`, riskScore: 30 + i }));
+    await Promise.all(calls);
+    expect(s.rows).toHaveLength(1);
+    expect(s.events).toHaveLength(12);
+    expect(s.events.every((e) => e.incidentId === s.rows[0].id)).toBe(true);
+    expect(s.rows[0].openKey).toBe('ip:198.51.100.7');
+  });
+
+  it('keeps the highest severity and risk whichever request finishes last', async () => {
+    const s = incidentStore([], { staleReads: 3 });
+    await Promise.all([
+      s.svc.createFromDetection({ ...base, severity: 'HIGH', riskScore: 35 }),
+      s.svc.createFromDetection({ ...base, severity: 'CRITICAL', riskScore: 100, ruleCode: 'brute_force_login' }),
+      s.svc.createFromDetection({ ...base, severity: 'MEDIUM', riskScore: 10 }),
+    ]);
+    expect(s.rows).toHaveLength(1);
+    expect(s.rows[0].riskScore).toBeGreaterThanOrEqual(35);
+  });
+
+  it('still opens separate incidents for different addresses', async () => {
+    const s = incidentStore([], { staleReads: 4 });
+    await Promise.all(['198.51.100.1', '198.51.100.2', '198.51.100.3', '198.51.100.4'].map((ip) => s.svc.createFromDetection({ ...base, sourceIp: ip })));
+    expect(s.rows).toHaveLength(4);
+  });
+
+  it('gives a quiet incident up its slot so a new one can open', async () => {
+    const s = incidentStore([{ sourceIp: '198.51.100.7', detectionRule: 'x', severity: 'HIGH', riskScore: 50, updatedAt: new Date(Date.now() - 45 * 60_000) }]);
+    await s.svc.createFromDetection(base);
+    expect(s.rows).toHaveLength(2);
+    expect(s.rows[0].openKey).toBeNull();
+    expect(s.rows[1].openKey).toBe('ip:198.51.100.7');
+  });
+
+  it('gives each kind of incident its own slot', () => {
+    const { openKeyFor } = require('../src/incidents/incidents.service');
+    expect(openKeyFor('ip', '198.51.100.7', null, 'x')).toBe('ip:198.51.100.7');
+    expect(openKeyFor('account', null, 'u9', 'distributed_account_attack')).toBe('acct:u9:distributed_account_attack');
+    expect(openKeyFor('global', null, null, 'distributed_login_attack')).toBe('glob:distributed_login_attack');
+  });
+});
+
+describe('closing and reopening frees and retakes the slot', () => {
+  function withStatus(initial: any, rivalOpen = false) {
+    const rows: any[] = [{ id: 'i1', status: 'OPEN', sourceIp: '198.51.100.7', userId: null, detectionRule: 'brute_force_login', resolvedAt: null, openKey: 'ip:198.51.100.7', ...initial }];
+    if (rivalOpen) rows.push({ id: 'i2', status: 'OPEN', openKey: 'ip:198.51.100.7' });
+    const prisma: any = {
+      securityIncident: {
+        findUnique: async ({ where }: any) => rows.find((r) => r.id === where.id) ?? null,
+        update: async ({ where, data }: any) => {
+          if (data.openKey && rows.some((r) => r.id !== where.id && r.openKey === data.openKey)) throw Object.assign(new Error('Unique constraint'), { code: 'P2002' });
+          return Object.assign(rows.find((r) => r.id === where.id)!, data);
+        },
+      },
+      securityIncidentTimeline: { create: async () => undefined },
+    };
+    return { svc: new IncidentsService(prisma, { log: jest.fn(async () => undefined) } as any), rows };
+  }
+
+  it('frees the slot when an incident is contained, resolved or closed as a false alarm', async () => {
+    for (const status of ['CONTAINED', 'RESOLVED', 'FALSE_POSITIVE']) {
+      const m = withStatus({});
+      await m.svc.updateStatus('i1', status, undefined, 'u1', 'a');
+      expect(m.rows[0].openKey).toBeNull();
+    }
+  });
+
+  it('keeps the slot while an incident is only moved between open and investigating', async () => {
+    const m = withStatus({});
+    await m.svc.updateStatus('i1', 'INVESTIGATING', undefined, 'u1', 'a');
+    expect(m.rows[0].openKey).toBe('ip:198.51.100.7');
+  });
+
+  it('retakes the slot when a closed incident is reopened', async () => {
+    const m = withStatus({ status: 'RESOLVED', openKey: null, resolvedAt: new Date() });
+    await m.svc.updateStatus('i1', 'OPEN', undefined, 'u1', 'a');
+    expect(m.rows[0]).toMatchObject({ status: 'OPEN', openKey: 'ip:198.51.100.7', resolvedAt: null });
+  });
+
+  it('reopens without the slot if a newer incident already holds it, instead of failing', async () => {
+    const m = withStatus({ status: 'RESOLVED', openKey: null }, true);
+    await m.svc.updateStatus('i1', 'OPEN', undefined, 'u1', 'a');
+    expect(m.rows[0]).toMatchObject({ status: 'OPEN', openKey: null });
+    expect(m.rows[1].openKey).toBe('ip:198.51.100.7');
+  });
+});
+
 describe('automatic blocking never overrides an administrator', () => {
   function blockingWith(existing: any | null) {
-    const created: any[] = [];
+    const created: any[] = []; const deactivated: any[] = [];
     const prisma: any = {
       securityIpAllowlist: { findUnique: async () => null },
       securityIpBlock: {
         findFirst: async () => existing,
-        updateMany: async () => ({ count: 1 }),
+        updateMany: async (a: any) => { deactivated.push(a); return { count: 1 }; },
         create: async ({ data }: any) => { created.push(data); return data; },
       },
     };
-    return { svc: new BlockingService(prisma, { log: jest.fn(async () => undefined) } as any), created };
+    return { svc: new BlockingService(prisma, { log: jest.fn(async () => undefined) } as any), created, deactivated };
   }
   const inMin = (m: number) => new Date(Date.now() + m * 60_000);
 
@@ -270,10 +371,23 @@ describe('automatic blocking never overrides an administrator', () => {
     await b.svc.autoBlock('198.51.100.7', { reason: 'r' });
     expect(b.created).toHaveLength(0);
   });
-  it('renews an automatic block that is nearly over', async () => {
-    const b = blockingWith({ isPermanent: false, automatic: true, expiresAt: inMin(10) });
+  it('renews an automatic block that is nearly over, retiring the old one first', async () => {
+    const b = blockingWith({ id: 'old', isPermanent: false, automatic: true, expiresAt: inMin(10) });
     await b.svc.autoBlock('198.51.100.7', { reason: 'r' });
     expect(b.created).toHaveLength(1);
+    expect(b.deactivated.some((d: any) => d.where.id === 'old')).toBe(true);
+  });
+  it('an automatic block only clears blocks that have already run out, never a live one', async () => {
+    const b = blockingWith(null);
+    await b.svc.autoBlock('198.51.100.7', { reason: 'r' });
+    const where = b.deactivated[0].where;
+    expect(where.expiresAt).toEqual({ lte: expect.any(Date) });
+    expect(where.isPermanent).toBe(false);
+  });
+  it('an administrator block replaces whatever is in force', async () => {
+    const b = blockingWith(null);
+    await b.svc.block('198.51.100.7', { reason: 'r', administratorId: 'u1' });
+    expect(b.deactivated[0].where).toEqual({ ipAddress: '198.51.100.7', active: true });
   });
 });
 

@@ -2,10 +2,21 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AUDIT_ACTIONS, INCIDENT_STATUS } from '../common/constants';
 import { AuditService } from '../audit/audit.service';
+import { isUniqueViolation } from '../common/utils/db-errors';
 
 /** An incident stays open to new events while it has had activity within this time. */
 const INCIDENT_ACTIVITY_WINDOW_MS = 30 * 60 * 1000;
 const SEVERITY_ORDER = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+
+/**
+ * The slot an open incident occupies: one per address, one per (account, rule), or one per
+ * (platform-wide) rule. The database refuses a second open incident for the same slot.
+ */
+export function openKeyFor(scope: 'ip' | 'account' | 'global', ip: string | null, userId: string | null, rule: string): string {
+  if (scope === 'ip') return `ip:${ip}`;
+  if (scope === 'account') return `acct:${userId ?? ''}:${rule}`;
+  return `glob:${rule}`;
+}
 
 let counter = 0;
 function nextIncidentId(): string {
@@ -49,50 +60,38 @@ export class IncidentsService {
     eventId?: string;
   }) {
     const scope = input.scope ?? 'ip';
-    const where: any = {
-      status: { in: [INCIDENT_STATUS.OPEN, INCIDENT_STATUS.INVESTIGATING] },
-      updatedAt: { gte: new Date(Date.now() - INCIDENT_ACTIVITY_WINDOW_MS) },
-    };
-    if (scope === 'ip') {
-      where.sourceIp = input.sourceIp;
-    } else if (scope === 'account') {
-      Object.assign(where, { sourceIp: null, userId: input.userId ?? null, detectionRule: input.ruleCode });
-    } else {
-      Object.assign(where, { sourceIp: null, userId: null, detectionRule: input.ruleCode });
-    }
-    const recent = await this.prisma.securityIncident.findFirst({ where, orderBy: { createdAt: 'desc' } });
+    const key = openKeyFor(scope, input.sourceIp, input.userId ?? null, input.ruleCode);
+    const cutoff = new Date(Date.now() - INCIDENT_ACTIVITY_WINDOW_MS);
 
-    if (recent) {
-      if (input.eventId) {
-        await this.prisma.securityEvent.update({ where: { id: input.eventId }, data: { incidentId: recent.id } });
-      }
-      const update: any = { updatedAt: new Date() };
-      const notes: string[] = [];
-      if (SEVERITY_ORDER.indexOf(input.severity) > SEVERITY_ORDER.indexOf(recent.severity)) {
-        update.severity = input.severity;
-        update.detectionRule = input.ruleCode;
-        update.title = input.title;
-        notes.push(`severity ${recent.severity} to ${input.severity} (${input.ruleCode})`);
-      }
-      if (input.riskScore > recent.riskScore) {
-        update.riskScore = input.riskScore;
-        notes.push(`risk ${recent.riskScore} to ${input.riskScore}`);
-      }
-      await this.prisma.securityIncident.update({ where: { id: recent.id }, data: update });
-      await this.prisma.securityIncidentTimeline.create({
-        data: {
-          incidentId: recent.id, action: 'event.attached', actor: 'system',
-          details: `Additional ${input.ruleCode} event attached`,
-        },
-      });
-      if (notes.length) {
-        await this.prisma.securityIncidentTimeline.create({
-          data: { incidentId: recent.id, action: 'incident.escalated', actor: 'system', details: `Escalated: ${notes.join('; ')}` },
-        });
-      }
-      return { ...recent, ...update };
-    }
+    // An incident that has been quiet for over 30 minutes no longer takes new events.
+    // Release its slot so a fresh incident can open for new activity.
+    await this.prisma.securityIncident.updateMany({
+      where: { openKey: key, updatedAt: { lt: cutoff } },
+      data: { openKey: null },
+    });
 
+    const existing = await this.findOpen(key);
+    if (existing) return this.attach(existing, input);
+
+    try {
+      return await this.open(input, scope, key);
+    } catch (err) {
+      if (!isUniqueViolation(err)) throw err;
+      // Parallel requests from the same attacker all found no open incident and all tried
+      // to open one. The database allowed only one, so join it instead of opening another.
+      const winner = await this.findOpen(key);
+      if (!winner) throw err;
+      return this.attach(winner, input);
+    }
+  }
+
+  private findOpen(key: string) {
+    return this.prisma.securityIncident.findFirst({
+      where: { openKey: key, status: { in: [INCIDENT_STATUS.OPEN, INCIDENT_STATUS.INVESTIGATING] } },
+    });
+  }
+
+  private async open(input: any, scope: 'ip' | 'account' | 'global', key: string) {
     const incident = await this.prisma.securityIncident.create({
       data: {
         incidentId: nextIncidentId(),
@@ -103,6 +102,7 @@ export class IncidentsService {
         userId: scope === 'global' ? null : input.userId ?? null,
         sessionId: input.sessionId ?? null,
         detectionRule: input.ruleCode,
+        openKey: key,
       },
     });
 
@@ -112,18 +112,49 @@ export class IncidentsService {
         details: `${input.ruleCode} triggered (risk=${input.riskScore})`,
       },
     });
-
     if (input.eventId) {
       await this.prisma.securityEvent.update({ where: { id: input.eventId }, data: { incidentId: incident.id } });
     }
-
     await this.audit.log({
       actorType: 'SYSTEM', action: AUDIT_ACTIONS.INCIDENT_CREATE,
       targetType: 'security_incident', targetId: incident.id, result: 'SUCCESS',
       metadata: { ruleCode: input.ruleCode, riskScore: input.riskScore, scope },
     });
-
     return incident;
+  }
+
+  /** Adds an event to an open incident and escalates it if this event is worse. */
+  private async attach(recent: any, input: any) {
+    if (input.eventId) {
+      await this.prisma.securityEvent.update({ where: { id: input.eventId }, data: { incidentId: recent.id } });
+    }
+    const update: any = { updatedAt: new Date() };
+    const notes: string[] = [];
+    // Compare against what is in the database right now, not what this request read earlier:
+    // parallel requests may already have raised it, and an incident must never go down.
+    if (SEVERITY_ORDER.indexOf(input.severity) > SEVERITY_ORDER.indexOf(recent.severity)) {
+      update.severity = input.severity;
+      update.detectionRule = input.ruleCode;
+      update.title = input.title;
+      notes.push(`severity ${recent.severity} to ${input.severity} (${input.ruleCode})`);
+    }
+    if (input.riskScore > recent.riskScore) {
+      update.riskScore = input.riskScore;
+      notes.push(`risk ${recent.riskScore} to ${input.riskScore}`);
+    }
+    await this.prisma.securityIncident.update({ where: { id: recent.id }, data: update });
+    await this.prisma.securityIncidentTimeline.create({
+      data: {
+        incidentId: recent.id, action: 'event.attached', actor: 'system',
+        details: `Additional ${input.ruleCode} event attached`,
+      },
+    });
+    if (notes.length) {
+      await this.prisma.securityIncidentTimeline.create({
+        data: { incidentId: recent.id, action: 'incident.escalated', actor: 'system', details: `Escalated: ${notes.join('; ')}` },
+      });
+    }
+    return { ...recent, ...update };
   }
 
   async list(params: {
@@ -169,7 +200,24 @@ export class IncidentsService {
       data.resolvedAt = null;
     }
 
-    const updated = await this.prisma.securityIncident.update({ where: { id }, data });
+    // Only an OPEN or INVESTIGATING incident takes new events, so only those hold the
+    // slot. Closing or containing one frees it for a fresh incident.
+    const takesEvents = status === INCIDENT_STATUS.OPEN || status === INCIDENT_STATUS.INVESTIGATING;
+    let updated;
+    if (takesEvents) {
+      const scope = incident.sourceIp ? 'ip' : incident.userId ? 'account' : 'global';
+      const key = openKeyFor(scope, incident.sourceIp, incident.userId, incident.detectionRule ?? '');
+      try {
+        updated = await this.prisma.securityIncident.update({ where: { id }, data: { ...data, openKey: key } });
+      } catch (err) {
+        if (!isUniqueViolation(err)) throw err;
+        // A newer incident already covers this address or account. The reopened one still
+        // changes status, but it will not take new events.
+        updated = await this.prisma.securityIncident.update({ where: { id }, data: { ...data, openKey: null } });
+      }
+    } else {
+      updated = await this.prisma.securityIncident.update({ where: { id }, data: { ...data, openKey: null } });
+    }
 
     await this.prisma.securityIncidentTimeline.create({
       data: { incidentId: id, action: `status.${status}`, actor: actorLabel, details: notes || null },

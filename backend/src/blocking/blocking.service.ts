@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { isInternalAddress, normalizeIp } from '../common/utils/ip.util';
+import { isUniqueViolation } from '../common/utils/db-errors';
 import { AuditService } from '../audit/audit.service';
 import { AUDIT_ACTIONS } from '../common/constants';
 
@@ -39,10 +40,14 @@ export class BlockingService {
       throw new BadRequestException('IP is on the allowlist');
     }
 
-    // Deactivate prior active blocks for this IP
+    // Free the one-active-block-per-address slot. An administrator's block replaces whatever
+    // is there. An automatic block only clears blocks that have already run out, so a
+    // burst of parallel requests cannot keep replacing each other's blocks.
     await this.prisma.securityIpBlock.updateMany({
-      where: { ipAddress: n, active: true },
-      data: { active: false },
+      where: input.automatic
+        ? { ipAddress: n, active: true, isPermanent: false, expiresAt: { lte: new Date() } }
+        : { ipAddress: n, active: true },
+      data: { active: false, activeKey: null },
     });
 
     const permanent = !!input.permanent;
@@ -54,15 +59,30 @@ export class BlockingService {
       expiresAt = new Date(Date.now() + ttl * 60 * 1000);
     }
 
-    const created = await this.prisma.securityIpBlock.create({
-      data: {
-        ipAddress: n, action: 'BLOCK', reason: input.reason,
-        administratorId: input.administratorId ?? null,
-        relatedIncidentId: input.relatedIncidentId ?? null,
-        isPermanent: permanent, expiresAt, active: true,
-        automatic: !!input.automatic,
-      },
-    });
+    const data = {
+      ipAddress: n, action: 'BLOCK', reason: input.reason,
+      administratorId: input.administratorId ?? null,
+      relatedIncidentId: input.relatedIncidentId ?? null,
+      isPermanent: permanent, expiresAt, active: true,
+      automatic: !!input.automatic, activeKey: n,
+    };
+    let created;
+    try {
+      created = await this.prisma.securityIpBlock.create({ data });
+    } catch (err) {
+      if (!isUniqueViolation(err)) throw err;
+      // Another request blocked this address at the same moment. For an automatic block
+      // that is enough: the address is blocked, so return that block. A manual block is an
+      // administrator's decision and must win, so it replaces the other and tries again.
+      const existing = await this.prisma.securityIpBlock.findFirst({
+        where: { ipAddress: n, action: 'BLOCK', active: true }, orderBy: { createdAt: 'desc' },
+      });
+      if (input.automatic && existing) return existing;
+      await this.prisma.securityIpBlock.updateMany({
+        where: { ipAddress: n, active: true }, data: { active: false, activeKey: null },
+      });
+      created = await this.prisma.securityIpBlock.create({ data });
+    }
 
     await this.audit.log({
       actorType: input.automatic ? 'SYSTEM' : 'USER',
@@ -95,6 +115,10 @@ export class BlockingService {
       if (existing.isPermanent || !existing.automatic) return existing;
       const remainingMs = (existing.expiresAt?.getTime() ?? 0) - now.getTime();
       if (remainingMs > (ttl * 60 * 1000) / 2) return existing;
+      // Nearly over: retire this one so a fresh block can take its place.
+      await this.prisma.securityIpBlock.updateMany({
+        where: { id: existing.id, active: true }, data: { active: false, activeKey: null },
+      });
     }
     return this.block(ip, {
       reason: input.reason, permanent: false, ttlMinutes: ttl,
@@ -106,7 +130,7 @@ export class BlockingService {
     const n = this.normalize(ip);
     const result = await this.prisma.securityIpBlock.updateMany({
       where: { ipAddress: n, active: true },
-      data: { active: false },
+      data: { active: false, activeKey: null },
     });
 
     await this.prisma.securityIpBlock.create({

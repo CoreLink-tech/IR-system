@@ -1,37 +1,40 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { isPrivateIp } from '../common/utils/ip.util';
+import { isNotFound, isUniqueViolation } from '../common/utils/db-errors';
 import { IpIntelligenceService } from './ip-intelligence.service';
 
 @Injectable()
 export class IpsService {
   constructor(private readonly prisma: PrismaService, private readonly intel: IpIntelligenceService) {}
 
+  /**
+   * Counts an event against its address. Safe when many events from the same new
+   * address arrive at once: the counters are incremented by the database itself
+   * (never read, add one, write back), and if two requests both try to create the
+   * row, the loser falls back to incrementing it. Risk is owned by the detection
+   * engine and is not touched here.
+   */
   async touch(ip: string, eventType: string) {
     const now = new Date();
     const failed = eventType === 'login_failed' ? 1 : 0;
-    const existing = await this.prisma.securityIp.findUnique({ where: { ipAddress: ip } });
-
-    if (!existing) {
-      await this.prisma.securityIp.create({
-        data: {
-          ipAddress: ip, firstSeenAt: now, lastSeenAt: now,
-          eventCount: 1, failedLogins: failed,
-        },
-      });
-      return;
-    }
-
-    // Risk is owned by the detection engine, which sets it from recent event risk
-    // after every event. Touch only maintains counters and timestamps.
-    await this.prisma.securityIp.update({
+    const bump = () => this.prisma.securityIp.update({
       where: { ipAddress: ip },
-      data: {
-        lastSeenAt: now,
-        eventCount: { increment: 1 },
-        failedLogins: { increment: failed },
-      },
+      data: { lastSeenAt: now, eventCount: { increment: 1 }, failedLogins: { increment: failed } },
     });
+    try {
+      await bump();
+    } catch (err) {
+      if (!isNotFound(err)) throw err;
+      try {
+        await this.prisma.securityIp.create({
+          data: { ipAddress: ip, firstSeenAt: now, lastSeenAt: now, eventCount: 1, failedLogins: failed },
+        });
+      } catch (createErr) {
+        if (!isUniqueViolation(createErr)) throw createErr;
+        await bump(); // another request created the row first
+      }
+    }
   }
 
   async detail(ip: string) {

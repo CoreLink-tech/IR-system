@@ -59,7 +59,8 @@ describe('IncidentsService', () => {
   it('does not stamp a resolution time for in-progress statuses', async () => {
     const m = make();
     await m.svc.updateStatus('i1', 'INVESTIGATING', undefined, 'u1', 'admin');
-    expect(m.updates[0].data).toEqual({ status: 'INVESTIGATING' });
+    expect(m.updates[0].data).toMatchObject({ status: 'INVESTIGATING' });
+    expect(m.updates[0].data).not.toHaveProperty('resolvedAt');
   });
 
   it('clears the old resolution time when an incident is reopened', async () => {
@@ -93,9 +94,9 @@ describe('IncidentsService', () => {
 });
 
 describe('BlockingService', () => {
-  function make(o: { allow?: any; existing?: any } = {}) {
+  function make(o: { allow?: any; existing?: any; raceOnce?: boolean } = {}) {
     const created: any[] = []; const deactivated: any[] = []; const deleted: any[] = []; const upserts: any[] = [];
-    let blockQuery: any;
+    let blockQuery: any; let raced = false;
     const prisma: any = {
       securityIpAllowlist: {
         findUnique: async () => o.allow ?? null,
@@ -109,7 +110,10 @@ describe('BlockingService', () => {
           { ipAddress: '198.51.100.7', reason: 'r', expiresAt: null, isPermanent: true, automatic: false, createdAt: new Date(), secret: 'internal' },
         ]; },
         updateMany: async (a: any) => { deactivated.push(a); return { count: 2 }; },
-        create: async ({ data }: any) => { created.push(data); return data; },
+        create: async ({ data }: any) => {
+          if (o.raceOnce && !raced) { raced = true; throw Object.assign(new Error('Unique constraint failed on activeKey'), { code: 'P2002' }); }
+          created.push(data); return data;
+        },
       },
     };
     const a = audit();
@@ -134,7 +138,8 @@ describe('BlockingService', () => {
   it('replaces earlier active blocks for the same address instead of stacking them', async () => {
     const m = make();
     await m.svc.block('198.51.100.7', { reason: 'r' });
-    expect(m.deactivated[0]).toEqual({ where: { ipAddress: '198.51.100.7', active: true }, data: { active: false } });
+    expect(m.deactivated[0]).toEqual({ where: { ipAddress: '198.51.100.7', active: true }, data: { active: false, activeKey: null } });
+    expect(m.created[0].activeKey).toBe('198.51.100.7');
   });
 
   it('refuses invalid addresses, internal addresses and allowlisted addresses', async () => {
@@ -170,6 +175,7 @@ describe('BlockingService', () => {
     const m = make();
     const r = await m.svc.unblock('198.51.100.7', 'False alarm', 'u1');
     expect(r).toEqual({ ok: true, deactivated: 2 });
+    expect(m.deactivated[0].data).toEqual({ active: false, activeKey: null });
     expect(m.created[0]).toMatchObject({ action: 'UNBLOCK', reason: 'False alarm', administratorId: 'u1', active: false });
     expect(m.audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'ip.unblock' }));
   });
@@ -183,6 +189,30 @@ describe('BlockingService', () => {
     expect(m.upserts[1].create.expiresAt).toBeNull();
     expect(await m.svc.unallow('203.0.113.9', 'u1')).toEqual({ ok: true });
     expect(m.deleted[0].where.ipAddress).toBe('203.0.113.9');
+  });
+
+  it('an automatic block that loses a race returns the block that won, without creating another', async () => {
+    const winner = { id: 'w', ipAddress: '198.51.100.7', action: 'BLOCK', active: true };
+    const m = make({ raceOnce: true, existing: undefined });
+    (m as any).svc['prisma'].securityIpBlock.findFirst = async () => winner;
+    const r = await m.svc.block('198.51.100.7', { reason: 'r', automatic: true });
+    expect(r).toBe(winner);
+    expect(m.created).toHaveLength(0);
+  });
+
+  it('a manual block that loses a race replaces the other block and succeeds', async () => {
+    const m = make({ raceOnce: true });
+    (m as any).svc['prisma'].securityIpBlock.findFirst = async () => ({ id: 'auto', automatic: true });
+    await m.svc.block('198.51.100.7', { reason: 'admin decision', administratorId: 'u1' });
+    expect(m.created).toHaveLength(1);
+    expect(m.created[0]).toMatchObject({ administratorId: 'u1', automatic: false, activeKey: '198.51.100.7' });
+    expect(m.deactivated.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('a database failure other than losing a race is not swallowed', async () => {
+    const m = make();
+    (m as any).svc['prisma'].securityIpBlock.create = async () => { throw new Error('disk full'); };
+    await expect(m.svc.block('198.51.100.7', { reason: 'r' })).rejects.toThrow('disk full');
   });
 
   it('lists only blocks that are in force, and exposes only the fields the website needs', async () => {
@@ -202,13 +232,21 @@ describe('BlockingService', () => {
 });
 
 describe('IpsService', () => {
-  function make(row: any | null, intel: any = null) {
+  function make(row: any | null, intel: any = null, o: { createRace?: boolean; updateFails?: boolean } = {}) {
     const created: any[] = []; const updated: any[] = [];
+    let exists = row !== null;
     const prisma: any = {
       securityIp: {
         findUnique: async () => row,
-        create: async ({ data }: any) => { created.push(data); return data; },
-        update: async (a: any) => { updated.push(a); },
+        create: async ({ data }: any) => {
+          if (o.createRace) { exists = true; throw Object.assign(new Error('Unique constraint failed'), { code: 'P2002' }); }
+          created.push(data); exists = true; return data;
+        },
+        update: async (a: any) => {
+          if (o.updateFails) throw new Error('connection lost');
+          if (!exists) throw Object.assign(new Error('Record not found'), { code: 'P2025' });
+          updated.push(a);
+        },
       },
       securityEvent: { findMany: async () => ['event'] },
       securityIpBlock: { findMany: async () => ['block'] },
@@ -221,16 +259,29 @@ describe('IpsService', () => {
     const m = make(null);
     await m.svc.touch('198.51.100.7', 'login_failed');
     expect(m.created[0]).toMatchObject({ ipAddress: '198.51.100.7', eventCount: 1, failedLogins: 1 });
-    await m.svc.touch('198.51.100.7', 'page_view');
-    expect(m.created[1].failedLogins).toBe(0);
+    const other = make(null);
+    await other.svc.touch('198.51.100.7', 'page_view');
+    expect(other.created[0].failedLogins).toBe(0);
   });
 
-  it('updates counters on later events and leaves risk to the detection engine', async () => {
+  it('counts later events by incrementing in the database, never by read, add and write back', async () => {
     const m = make({ ipAddress: '198.51.100.7', failedLogins: 40, isMalicious: true });
     await m.svc.touch('198.51.100.7', 'login_failed');
+    expect(m.created).toHaveLength(0);
     expect(m.updated[0].data).toMatchObject({ eventCount: { increment: 1 }, failedLogins: { increment: 1 } });
     expect(m.updated[0].data).not.toHaveProperty('riskScore');
     expect(m.updated[0].data).not.toHaveProperty('riskLevel');
+  });
+
+  it('loses no count when two requests create the same new address at once', async () => {
+    const m = make(null, null, { createRace: true });
+    await m.svc.touch('198.51.100.7', 'login_failed');
+    expect(m.updated).toHaveLength(1);
+    expect(m.updated[0].data).toMatchObject({ eventCount: { increment: 1 }, failedLogins: { increment: 1 } });
+  });
+
+  it('does not hide a genuine database failure', async () => {
+    await expect(make({ ipAddress: 'x' }, null, { updateFails: true }).svc.touch('198.51.100.7', 'login_failed')).rejects.toThrow('connection lost');
   });
 
   it('returns detail with recent events and blocks for a known address', async () => {

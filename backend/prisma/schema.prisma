@@ -108,6 +108,10 @@ model SecurityIncident {
   detectionRule   String?
   assignedTo      String?
   resolutionNotes String?   @db.Text
+  // Set only while the incident is open to new events, and unique, so the database
+  // itself guarantees at most one open incident per address, account or attack. Without
+  // it, parallel requests from one attacker each opened their own incident.
+  openKey         String?   @unique
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   resolvedAt      DateTime?
@@ -191,6 +195,9 @@ model SecurityIpBlock {
   expiresAt         DateTime?
   active            Boolean   @default(true)
   automatic         Boolean   @default(false)
+  // Holds the address while this block is the one in force, and is unique, so two
+  // parallel requests cannot both create an active block for the same address.
+  activeKey         String?   @unique
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
