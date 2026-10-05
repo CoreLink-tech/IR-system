@@ -207,3 +207,16 @@ describe('AuditService', () => {
     await expect(svc.log({ actorType: 'SYSTEM', action: 'x', result: 'SUCCESS' })).resolves.toBeNull();
   });
 });
+
+describe('shared address vectors (the PHP client must agree with these exactly)', () => {
+  const file = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '../../integration/shared/ip-vectors.json'), 'utf8'));
+
+  it('has a meaningful number of cases', () => {
+    expect(file.vectors.length).toBeGreaterThan(80);
+  });
+
+  it.each(file.vectors.map((v: any) => [JSON.stringify(v.input), v]))('normalizes %s', (_name: string, v: any) => {
+    expect(normalizeIp(v.input) ?? null).toBe(v.normalized);
+    if (v.normalized) expect(isInternalAddress(v.normalized)).toBe(v.internal);
+  });
+});

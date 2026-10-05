@@ -5,7 +5,7 @@
     cd backend
     npm test            # 420 unit and HTTP-level tests
     npm run test:cov    # same, plus coverage; fails if coverage drops below the floors
-    npm run test:php    # the PHP client tests (needs php with the curl extension)
+    npm run test:php    # the PHP library tests, three files (needs php with the curl extension)
     npm run test:all    # both
 
 ## What is covered
@@ -21,7 +21,8 @@
 | Reports | All wording, honesty rules, posture, scoped incidents, the HTTP endpoints |
 | IP intelligence | Each provider, merging, caching, failure handling |
 | Configuration | Startup refusal of placeholder and weak secrets |
-| PHP client | Request format, auth header, retries, timeouts, failure handling, key never logged |
+| PHP library | Visitor address and trusted proxies, blocklist cache, circuit breaker, event queue and replay, redaction, guard modes, configuration, PHP 7.4 syntax check, end-to-end through a fake API (198 checks) |
+| Address parsing | One shared file of 95 cases, run by both the server tests and the PHP tests, so both sides agree on what an address means |
 
 ## Coverage floors
 

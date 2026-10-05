@@ -1,0 +1,480 @@
+{
+  "_comment": "Source of truth for address parsing. Both the server (Jest) and the PHP client (tests/run.php) must produce exactly these results. Generated from backend normalizeIp and isInternalAddress, then reviewed by hand.",
+  "vectors": [
+    {
+      "input": "203.0.113.5",
+      "normalized": "203.0.113.5",
+      "internal": false
+    },
+    {
+      "input": "198.51.100.7",
+      "normalized": "198.51.100.7",
+      "internal": false
+    },
+    {
+      "input": "8.8.8.8",
+      "normalized": "8.8.8.8",
+      "internal": false
+    },
+    {
+      "input": "1.1.1.1",
+      "normalized": "1.1.1.1",
+      "internal": false
+    },
+    {
+      "input": "255.255.255.255",
+      "normalized": "255.255.255.255",
+      "internal": true
+    },
+    {
+      "input": "0.0.0.0",
+      "normalized": "0.0.0.0",
+      "internal": true
+    },
+    {
+      "input": "127.0.0.1",
+      "normalized": "127.0.0.1",
+      "internal": true
+    },
+    {
+      "input": "10.0.0.1",
+      "normalized": "10.0.0.1",
+      "internal": true
+    },
+    {
+      "input": "172.16.0.1",
+      "normalized": "172.16.0.1",
+      "internal": true
+    },
+    {
+      "input": "172.31.255.255",
+      "normalized": "172.31.255.255",
+      "internal": true
+    },
+    {
+      "input": "172.32.0.1",
+      "normalized": "172.32.0.1",
+      "internal": false
+    },
+    {
+      "input": "192.168.1.1",
+      "normalized": "192.168.1.1",
+      "internal": true
+    },
+    {
+      "input": "169.254.1.1",
+      "normalized": "169.254.1.1",
+      "internal": true
+    },
+    {
+      "input": "100.64.0.1",
+      "normalized": "100.64.0.1",
+      "internal": true
+    },
+    {
+      "input": "100.127.255.255",
+      "normalized": "100.127.255.255",
+      "internal": true
+    },
+    {
+      "input": "100.128.0.1",
+      "normalized": "100.128.0.1",
+      "internal": false
+    },
+    {
+      "input": "224.0.0.1",
+      "normalized": "224.0.0.1",
+      "internal": true
+    },
+    {
+      "input": "192.0.2.1",
+      "normalized": "192.0.2.1",
+      "internal": false
+    },
+    {
+      "input": "0.1.2.3",
+      "normalized": "0.1.2.3",
+      "internal": true
+    },
+    {
+      "input": "240.0.0.1",
+      "normalized": "240.0.0.1",
+      "internal": false
+    },
+    {
+      "input": "192.0.0.1",
+      "normalized": "192.0.0.1",
+      "internal": false
+    },
+    {
+      "input": "198.18.0.1",
+      "normalized": "198.18.0.1",
+      "internal": false
+    },
+    {
+      "input": "203.0.113.255",
+      "normalized": "203.0.113.255",
+      "internal": false
+    },
+    {
+      "input": "172.15.255.255",
+      "normalized": "172.15.255.255",
+      "internal": false
+    },
+    {
+      "input": "11.0.0.1",
+      "normalized": "11.0.0.1",
+      "internal": false
+    },
+    {
+      "input": " 203.0.113.5 ",
+      "normalized": "203.0.113.5",
+      "internal": false
+    },
+    {
+      "input": "\t203.0.113.5",
+      "normalized": "203.0.113.5",
+      "internal": false
+    },
+    {
+      "input": "127.1",
+      "normalized": null,
+      "internal": false
+    },
+    {
+      "input": "1.2.3",
+      "normalized": null,
+      "internal": false
+    },
+    {
+      "input": "1.2.3.4.5",
+      "normalized": null,
+      "internal": false
+    },
+    {
+      "input": "0x7f.0.0.1",
+      "normalized": null,
+      "internal": false
+    },
+    {
+      "input": "0x7f000001",
+      "normalized": null,
+      "internal": false
+    },
+    {
+      "input": "2130706433",
+      "normalized": null,
+      "internal": false
+    },
+    {
+      "input": "010.0.0.1",
+      "normalized": null,
+      "internal": false
+    },
+    {
+      "input": "1.2.3.04",
+      "normalized": null,
+      "internal": false
+    },
+    {
+      "input": "08.8.8.8",
+      "normalized": null,
+      "internal": false
+    },
+    {
+      "input": "256.1.1.1",
+      "normalized": null,
+      "internal": false
+    },
+    {
+      "input": "999.1.1.1",
+      "normalized": null,
+      "internal": false
+    },
+    {
+      "input": "1.1.1.1.",
+      "normalized": null,
+      "internal": false
+    },
+    {
+      "input": "-1.1.1.1",
+      "normalized": null,
+      "internal": false
+    },
+    {
+      "input": "1.1.1.-1",
+      "normalized": null,
+      "internal": false
+    },
+    {
+      "input": "1..1.1",
+      "normalized": null,
+      "internal": false
+    },
+    {
+      "input": "",
+      "normalized": null,
+      "internal": false
+    },
+    {
+      "input": "abc",
+      "normalized": null,
+      "internal": false
+    },
+    {
+      "input": "<script>",
+      "normalized": null,
+      "internal": false
+    },
+    {
+      "input": "1.2.3.4/24",
+      "normalized": null,
+      "internal": false
+    },
+    {
+      "input": "1.2.3.4:80",
+      "normalized": null,
+      "internal": false
+    },
+    {
+      "input": "1.2.3.4,5.6.7.8",
+      "normalized": null,
+      "internal": false
+    },
+    {
+      "input": "null",
+      "normalized": null,
+      "internal": false
+    },
+    {
+      "input": "undefined",
+      "normalized": null,
+      "internal": false
+    },
+    {
+      "input": "::g",
+      "normalized": null,
+      "internal": false
+    },
+    {
+      "input": ":::",
+      "normalized": null,
+      "internal": false
+    },
+    {
+      "input": "1:2:3:4:5:6:7:8:9",
+      "normalized": null,
+      "internal": false
+    },
+    {
+      "input": "::1",
+      "normalized": "::1",
+      "internal": true
+    },
+    {
+      "input": "::",
+      "normalized": "::",
+      "internal": true
+    },
+    {
+      "input": "2001:db8::1",
+      "normalized": "2001:db8::1",
+      "internal": false
+    },
+    {
+      "input": "2001:DB8::1",
+      "normalized": "2001:db8::1",
+      "internal": false
+    },
+    {
+      "input": "2001:0db8:0000:0000:0000:0000:0000:0001",
+      "normalized": "2001:db8::1",
+      "internal": false
+    },
+    {
+      "input": "2001:db8:0:0:0:0:0:1",
+      "normalized": "2001:db8::1",
+      "internal": false
+    },
+    {
+      "input": "2606:4700::1111",
+      "normalized": "2606:4700::1111",
+      "internal": false
+    },
+    {
+      "input": "fe80::1",
+      "normalized": "fe80::1",
+      "internal": true
+    },
+    {
+      "input": "fc00::1",
+      "normalized": "fc00::1",
+      "internal": true
+    },
+    {
+      "input": "fd12:3456::1",
+      "normalized": "fd12:3456::1",
+      "internal": true
+    },
+    {
+      "input": "ff02::1",
+      "normalized": "ff02::1",
+      "internal": true
+    },
+    {
+      "input": "ff00::1",
+      "normalized": "ff00::1",
+      "internal": true
+    },
+    {
+      "input": "fec0::1",
+      "normalized": "fec0::1",
+      "internal": false
+    },
+    {
+      "input": "febf::1",
+      "normalized": "febf::1",
+      "internal": true
+    },
+    {
+      "input": "fe80::",
+      "normalized": "fe80::",
+      "internal": true
+    },
+    {
+      "input": "fdff::1",
+      "normalized": "fdff::1",
+      "internal": true
+    },
+    {
+      "input": "fbff::1",
+      "normalized": "fbff::1",
+      "internal": false
+    },
+    {
+      "input": "2001:db8::",
+      "normalized": "2001:db8::",
+      "internal": false
+    },
+    {
+      "input": "2001:db8:0:1:0:0:0:1",
+      "normalized": "2001:db8:0:1::1",
+      "internal": false
+    },
+    {
+      "input": "1:0:0:2:0:0:0:3",
+      "normalized": "1:0:0:2::3",
+      "internal": false
+    },
+    {
+      "input": "2001:db8:0:1:1:1:1:1",
+      "normalized": "2001:db8:0:1:1:1:1:1",
+      "internal": false
+    },
+    {
+      "input": "2001:0:0:1:0:0:1:1",
+      "normalized": "2001::1:0:0:1:1",
+      "internal": false
+    },
+    {
+      "input": "0:0:0:0:0:0:0:0",
+      "normalized": "::",
+      "internal": true
+    },
+    {
+      "input": "1:0:0:0:0:0:0:0",
+      "normalized": "1::",
+      "internal": false
+    },
+    {
+      "input": "0:0:0:0:0:0:0:1",
+      "normalized": "::1",
+      "internal": true
+    },
+    {
+      "input": "ABCD:EF01:2345:6789:ABCD:EF01:2345:6789",
+      "normalized": "abcd:ef01:2345:6789:abcd:ef01:2345:6789",
+      "internal": false
+    },
+    {
+      "input": "2001:db8:0:0:1:0:0:1",
+      "normalized": "2001:db8::1:0:0:1",
+      "internal": false
+    },
+    {
+      "input": "fe80::1%eth0",
+      "normalized": null,
+      "internal": false
+    },
+    {
+      "input": "fe80::1%1",
+      "normalized": null,
+      "internal": false
+    },
+    {
+      "input": "::ffff:203.0.113.5",
+      "normalized": "203.0.113.5",
+      "internal": false
+    },
+    {
+      "input": "::FFFF:203.0.113.5",
+      "normalized": "203.0.113.5",
+      "internal": false
+    },
+    {
+      "input": "::ffff:cb00:7105",
+      "normalized": "203.0.113.5",
+      "internal": false
+    },
+    {
+      "input": "::ffff:CB00:7105",
+      "normalized": "203.0.113.5",
+      "internal": false
+    },
+    {
+      "input": "0:0:0:0:0:ffff:203.0.113.5",
+      "normalized": "203.0.113.5",
+      "internal": false
+    },
+    {
+      "input": "::ffff:10.0.0.1",
+      "normalized": "10.0.0.1",
+      "internal": true
+    },
+    {
+      "input": "::ffff:127.0.0.1",
+      "normalized": "127.0.0.1",
+      "internal": true
+    },
+    {
+      "input": "::ffff:999.1.1.1",
+      "normalized": null,
+      "internal": false
+    },
+    {
+      "input": "::ffff:1.2.3",
+      "normalized": null,
+      "internal": false
+    },
+    {
+      "input": "::203.0.113.5",
+      "normalized": null,
+      "internal": false
+    },
+    {
+      "input": "64:ff9b::203.0.113.5",
+      "normalized": null,
+      "internal": false
+    },
+    {
+      "input": "[2001:db8::1]",
+      "normalized": null,
+      "internal": false
+    },
+    {
+      "input": "[2001:db8::1]:443",
+      "normalized": null,
+      "internal": false
+    }
+  ]
+}

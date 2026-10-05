@@ -20,7 +20,15 @@ export function extractIp(req: Request): string | undefined {
 export function normalizeIp(input?: string | null): string | undefined {
   if (!input) return undefined;
   let value = String(input).trim();
-  if (value.startsWith('::ffff:')) value = value.substring(7);
+  // Zone identifiers ("fe80::1%eth0") name a local interface, not an internet address.
+  if (value.includes('%')) return undefined;
+  // An IPv6 address written with a dotted quad is accepted only in the IPv4-mapped
+  // form ("::ffff:203.0.113.5", any letter case). The parser would read other forms
+  // such as "::203.0.113.5" as IPv4-mapped too, although that address is something else.
+  if (value.includes(':') && value.includes('.')) {
+    if (!/^(?:::|(?:0{1,4}:){5})ffff:\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/i.test(value)) return undefined;
+    value = value.substring(value.lastIndexOf(':') + 1);
+  }
   // Be strict. The parser would otherwise accept shorthand forms such as "1.2.3"
   // (read as 1.2.0.3), "127.1", hexadecimal "0x7f.0.0.1" and octal "010.0.0.1".
   // Those would be stored or blocked as a different address than the one meant.

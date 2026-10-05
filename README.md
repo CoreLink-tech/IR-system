@@ -76,7 +76,7 @@ Generate secrets:
 ## IP Blocking
 
 This platform records block state. It does NOT enforce network blocks.
-Pishon's PHP middleware is responsible for rejecting traffic based on
+Pishon's PHP library (`integration/php/`, see its README) is responsible for rejecting traffic based on
 GET /api/v1/security/blocked-ips. Automatic blocks are always temporary.
 
 ## License

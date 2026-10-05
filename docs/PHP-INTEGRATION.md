@@ -1,50 +1,78 @@
-# Pishon PHP Integration
+# PHP Integration
 
-## Install
-Copy integration/php/SecurityClient.php into your Pishon codebase.
+The website talks to the Security API through the library in `integration/php/`.
+Setup, configuration, the event calls and the rollout plan are in
+[`integration/php/README.md`](../integration/php/README.md). This page explains how
+the pieces fit and why they work the way they do.
 
-## Configure
-Add to .env or config:
+## Flow
 
-    SECURITY_API_BASE=https://security.pishon.example
-    SECURITY_API_KEY=PMS_xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-    SECURITY_API_TIMEOUT=2
+    Visitor -> [proxy / CDN] -> PHP page
+                                  |  bootstrap.php: find the visitor, check the blocklist
+                                  |  page runs; Security::loginFailed(...) etc. collect events
+                                  |  response is sent to the visitor
+                                  v  after the response: events are delivered
+                          Security API  <-- events (API key, scope events:write)
+                          Security API  --> blocklist (API key, scope block:read), cached by the website
 
-Create the API key once:
+The visitor never waits for the Security API. The only network call on the page path
+is the blocklist refresh, which one request at a time makes every 30 seconds, with a
+short timeout, while the others carry on with the previous copy.
 
-    curl -X POST https://security.pishon.example/api/v1/api-keys \
-      -H "Authorization: Bearer <accessToken>" \
-      -H "Content-Type: application/json" \
-      -d '{"name":"Pishon PHP","scopes":["events:write","block:read"],"expiresInDays":365}'
+## Decisions that matter
 
-Raw key returned ONCE.
+- **Blocking is enforced on the website.** The platform keeps the authoritative list;
+  the website enforces it. The platform cannot see whether a block was applied.
+- **Fail open.** A security outage must not take the shop offline. With no blocklist
+  available, visitors are let in. "Could not ask" is never treated as "nothing is blocked":
+  a failed refresh keeps the previous list.
+- **The visitor address is only taken from forwarding headers when the connection is
+  from a trusted proxy.** Otherwise anyone could forge a header to hide, or to get an
+  innocent address blocked. The rightmost address that is not a trusted proxy is used,
+  never the leftmost, which the visitor controls.
+- **Addresses mean the same on both sides.** Shorthand, octal and hexadecimal forms
+  are rejected, IPv4-mapped IPv6 becomes IPv4, and IPv6 is written one canonical way.
+  `integration/shared/ip-vectors.json` holds 95 cases that both the server tests
+  (Jest) and the PHP tests must pass.
+- **Private and loopback addresses are never blocked.** The website cannot lock
+  itself or its proxy out, even if the blocklist contains such an address.
+- **Secrets stay home.** Passwords, tokens and similar are redacted before sending,
+  and the session id is replaced by a one-way token.
+- **Events survive outages.** Undelivered events are queued on disk, bounded in size,
+  and sent later with their original timestamps (the server accepts old events and
+  rejects ones from the future). An event the server rejects with a 4xx is dropped,
+  not retried forever.
+- **The API key has two scopes only.** `events:write` and `block:read`. A leaked key
+  cannot read incidents, change blocks or see reports.
 
-## Send a login event
+## Event types the server understands
 
-    use App\Security\SecurityClient;
-    $sec = SecurityClient::fromEnv();
-    $sec->event('login_failed', 'MEDIUM', [
-        'ip_address'     => $_SERVER['REMOTE_ADDR'] ?? null,
-        'user_id'        => $user->id ?? null,
-        'session_id'     => session_id() ?: null,
-        'user_agent'     => $_SERVER['HTTP_USER_AGENT'] ?? null,
-        'request_method' => $_SERVER['REQUEST_METHOD'] ?? null,
-        'request_path'   => $_SERVER['REQUEST_URI'] ?? null,
-        'request_id'     => $requestId,
-        'metadata'       => ['reason' => 'bad_password'],
-    ]);
+| Helper | Event type | Default severity |
+|--------|-----------|------------------|
+| `loginFailed` | `login_failed` | MEDIUM |
+| `loginSuccess` | `login_success` | INFO |
+| `logout` | `logout` | INFO |
+| `passwordReset` | `password_reset` | LOW |
+| `adminAccess` | `admin_access` | INFO |
+| `accountChange` | `account_change` | MEDIUM |
+| `paymentIssue` | `payment_security_event` | MEDIUM |
+| `sessionAnomaly` | `session_anomaly` | MEDIUM |
+| `suspiciousRequest` | `suspicious_request` | HIGH |
+| `rateLimited` | `rate_limit_exceeded` | LOW |
 
-## Enforce the blocklist
+The detection rules read `login_failed`, `login_success`, `password_reset`,
+`admin_access`, `payment_security_event` and `session_anomaly`, and always send the
+`user_id` when you give one. The account-based rules (distributed attacks on one
+account, takeover, impossible travel) need `user_id` on both failed and successful
+logins.
 
-    $blocked = $sec->blockedIps();
-    if (in_array($clientIp, $blocked, true)) {
-        http_response_code(403);
-        exit('Access denied');
-    }
+## Operations
 
-Cache in APCu / Redis / file. Do not call on every request.
-
-## Failure behavior
-- Times out after SECURITY_API_TIMEOUT seconds.
-- Retries once on 5xx or network error.
-- Never throws into your request path.
+- `php bin/doctor.php` checks configuration, the state folder, address detection and
+  API access. Run it after any change.
+- State lives in `SECURITY_STATE_DIR`: the blocklist cache, breaker state and event
+  queue. It is safe to delete; the library rebuilds it.
+- `SECURITY_ENABLED=false` is the kill switch.
+- Watch the error log for `[pishon-security]` lines. The ones to alert on:
+  `security_api_key_rejected`, `security_blocklist_refresh_failed` repeating,
+  `security_spool_full` and `security_state_dir_unusable`.
