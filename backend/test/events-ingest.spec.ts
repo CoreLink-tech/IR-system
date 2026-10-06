@@ -83,12 +83,21 @@ describe('redactPath', () => {
 });
 
 /** Builds an EventsService with call-order tracking. */
-function pipeline(over: { touch?: () => any; detect?: () => any } = {}) {
+function pipeline(over: { touch?: () => any; detect?: () => any; raceOnCreate?: boolean } = {}) {
   const calls: string[] = [];
   const created: any[] = [];
   const prisma: any = {
     securityEvent: {
-      create: async ({ data }: any) => { calls.push('store'); const row = { id: `e${created.length + 1}`, ...data }; created.push(row); return row; },
+      findFirst: async ({ where }: any) => created.find((r) => r.apiKeyId === where.apiKeyId && r.externalId === where.externalId) ?? null,
+      create: async ({ data }: any) => {
+        if (data.externalId && over.raceOnCreate) {
+          // Another copy of the same event was stored a moment ago, after our check.
+          over.raceOnCreate = false;
+          created.push({ id: 'winner', riskScore: 55, riskLevel: 'SUSPICIOUS', incidentId: 'incW', ...data });
+          throw Object.assign(new Error('Unique constraint failed on apiKeyId, externalId'), { code: 'P2002' });
+        }
+        calls.push('store'); const row = { id: `e${created.length + 1}`, riskScore: 40, riskLevel: 'SUSPICIOUS', incidentId: 'inc1', ...data }; created.push(row); return row;
+      },
     },
   };
   const audit = { log: jest.fn(async () => { calls.push('audit'); }) };
@@ -198,6 +207,73 @@ describe('EventsService.ingest', () => {
     const r = await p.svc.ingest(base as any, ctx);
     expect(r).toEqual({ id: 'e1', riskScore: 0, riskLevel: 'NORMAL', incidentId: null });
     expect(p.audit.log).toHaveBeenCalled();
+  });
+});
+
+describe('EventsService.ingest idempotency', () => {
+  const withId = { ...base, event_id: 'evt-0123456789abcdef' };
+
+  it('stores an event with an id once, however many times it is delivered', async () => {
+    const p = pipeline();
+    const first = await p.svc.ingest(withId as any, ctx);
+    const again = await p.svc.ingest(withId as any, ctx);
+    const third = await p.svc.ingest(withId as any, ctx);
+    expect(p.created).toHaveLength(1);
+    expect(first.id).toBe('e1');
+    expect(again).toEqual({ id: 'e1', riskScore: 40, riskLevel: 'SUSPICIOUS', incidentId: 'inc1', duplicate: true });
+    expect(third.id).toBe('e1');
+  });
+
+  it('does not run detection, touch the address or audit a second time for a repeat', async () => {
+    const p = pipeline();
+    await p.svc.ingest(withId as any, ctx);
+    await p.svc.ingest(withId as any, ctx);
+    expect(p.detection.processEvent).toHaveBeenCalledTimes(1);
+    expect(p.ips.touch).toHaveBeenCalledTimes(1);
+    expect(p.audit.log).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps ids separate per API key, so one sender can never collide with or read another', async () => {
+    const p = pipeline();
+    await p.svc.ingest(withId as any, { ...ctx, apiKeyId: 'k1' });
+    await p.svc.ingest(withId as any, { ...ctx, apiKeyId: 'k2' });
+    expect(p.created).toHaveLength(2);
+  });
+
+  it('treats events without an id as separate events, as before', async () => {
+    const p = pipeline();
+    await p.svc.ingest(base as any, ctx);
+    await p.svc.ingest(base as any, ctx);
+    expect(p.created).toHaveLength(2);
+    expect(p.created[0].externalId).toBeUndefined();
+  });
+
+  it('different ids are different events', async () => {
+    const p = pipeline();
+    await p.svc.ingest({ ...base, event_id: 'a' } as any, ctx);
+    await p.svc.ingest({ ...base, event_id: 'b' } as any, ctx);
+    expect(p.created).toHaveLength(2);
+  });
+
+  it('two copies arriving at the same moment end up as one event, and both get the same answer', async () => {
+    const p = pipeline({ raceOnCreate: true });
+    const r = await p.svc.ingest(withId as any, ctx);
+    expect(r).toEqual({ id: 'winner', riskScore: 55, riskLevel: 'SUSPICIOUS', incidentId: 'incW', duplicate: true });
+    expect(p.detection.processEvent).not.toHaveBeenCalled();
+  });
+
+  it('a genuine database failure is not mistaken for a repeat', async () => {
+    const p = pipeline();
+    (p.svc as any).prisma.securityEvent.create = async () => { throw new Error('disk full'); };
+    await expect(p.svc.ingest(withId as any, ctx)).rejects.toThrow('disk full');
+  });
+
+  it('the id is validated: short, plain characters only', async () => {
+    const errors = async (id: any) => (await validate(plainToInstance(CreateEventDto, { event_type: 'x', severity: 'LOW', event_id: id }))).map((e) => e.property);
+    expect(await errors('abc-123_DEF.9:x')).toEqual([]);
+    expect(await errors('has space')).toContain('event_id');
+    expect(await errors('x'.repeat(65))).toContain('event_id');
+    expect(await errors('<script>')).toContain('event_id');
   });
 });
 

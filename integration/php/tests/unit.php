@@ -338,6 +338,16 @@ check('stamps events that have no timestamp', preg_match('/^\d{4}-\d\d-\d\dT/', 
 $s2 = new FakeSender(); $r2 = $mkRep($s2);
 $r2->report($ev(1) + ['timestamp' => '2026-01-01T00:00:00+00:00']); $r2->flush();
 check('keeps a timestamp the caller set', $s2->sent[0]['timestamp'] === '2026-01-01T00:00:00+00:00');
+$s3 = new FakeSender(); $r3 = $mkRep($s3);
+$r3->report($ev(1)); $r3->report($ev(2)); $r3->report($ev(3) + ['event_id' => 'mine-1']); $r3->flush();
+$ids = array_column($s3->sent, 'event_id');
+check('gives every event its own id, so a repeat delivery is recognised by the server', preg_match('/^[0-9a-f]{24}$/', $ids[0]) === 1 && $ids[0] !== $ids[1] && $ids[2] === 'mine-1');
+$st4 = $sp4 = $br4 = null; $s4 = new FakeSender(); $s4->script = [$fail]; $r4 = $mkRep($s4, $st4, $sp4, $br4);
+$r4->report($ev(1)); $r4->flush();
+$queuedId = $sp4->take(5)[0]['event_id'] ?? null;
+$sp4->append(['event_type' => 'login_failed', 'severity' => 'LOW', 'event_id' => $queuedId]);
+$s4b = new FakeSender(); $r4b = $mkRep($s4b, $st4, $sp4, $br4); $r4b->flush();
+check('an event keeps the same id when it is queued and sent again later', $queuedId !== null && ($s4b->sent[0]['event_id'] ?? null) === $queuedId);
 
 $st = $sp = $br = null; $s = new FakeSender(); $s->script = [$ok, $fail]; $r = $mkRep($s, $st, $sp, $br);
 $r->report($ev(1)); $r->report($ev(2)); $r->report($ev(3)); $r->flush();
@@ -369,6 +379,18 @@ $s = new FakeSender(); $s->script = [$ok, $fail]; $r = $mkRep($s, $store, $sp, $
 $r->flush();
 check('a failure during replay puts the unsent events back in their original order', array_column($s->sent, 'n') === [101] && array_column($sp->take(10), 'n') === [102, 103]);
 
+// replay without a new event
+$st5 = $sp5 = $br5 = null; $s5 = new FakeSender(); $r5 = $mkRep($s5, $st5, $sp5, $br5);
+check('nothing is scheduled on a page when there is no backlog', ($r5->replayIfNeeded() ?? true) && $r5->isScheduled() === false);
+$sp5->append($ev(77));
+$r5->replayIfNeeded();
+check('a page that reports nothing still schedules delivery of a waiting backlog', $r5->isScheduled() === true);
+$st6 = $sp6 = $br6 = null; $s6 = new FakeSender(); $r6 = $mkRep($s6, $st6, $sp6, $br6);
+$sp6->append($ev(78)); $br6->failure(); $br6->failure(); $br6->failure();
+$r6->replayIfNeeded();
+check('but not while the breaker is open (the API is known to be down)', $r6->isScheduled() === false);
+check('hasEvents is false for an empty queue and true for a queued event', (new EventSpool(newStore()))->hasEvents() === false && $sp5->hasEvents() === true);
+
 // budget
 $st = $sp = $br = null; $s = new FakeSender(); $s->delay = 0.12; $r = $mkRep($s, $st, $sp, $br, 0.2);
 foreach ([1, 2, 3, 4, 5] as $n) { $r->report($ev($n)); }
@@ -395,7 +417,8 @@ check('an unknown mode means monitor, the safe default', (new SecurityGuard(func
 // ---------------------------------------------------------------- config
 section('SecurityConfig: settings');
 $c = SecurityConfig::fromEnv([]);
-check('defaults are safe: monitor mode, enabled, no trusted proxies', $c->get('mode') === 'monitor' && $c->get('enabled') === true && $c->get('trusted') === [] && $c->get('ttl') === 30);
+check('defaults are safe: monitor mode, enabled, no trusted proxies', $c->get('mode') === 'monitor' && $c->get('enabled') === true && $c->get('trusted') === [] && $c->get('ttl') === 30 && $c->get('breakerOpen') === 30);
+check('the breaker pause is configurable and never below one second', SecurityConfig::fromEnv(['SECURITY_BREAKER_OPEN' => '5'])->get('breakerOpen') === 5 && SecurityConfig::fromEnv(['SECURITY_BREAKER_OPEN' => '0'])->get('breakerOpen') === 1);
 check('missing base and key are reported', count($c->problems()) === 2);
 $c = SecurityConfig::fromEnv(['SECURITY_API_BASE' => 'https://sec.example.com/', 'SECURITY_API_KEY' => 'PMS_x', 'SECURITY_MODE' => 'ENFORCE', 'SECURITY_TRUSTED_PROXIES' => ' 10.0.0.1 , private ,, 173.245.48.0/20', 'SECURITY_BLOCKLIST_TTL' => '60', 'SECURITY_API_TIMEOUT' => '0.5']);
 check('a full configuration is read and tidied', $c->problems() === [] && $c->get('base') === 'https://sec.example.com' && $c->get('mode') === 'enforce' && $c->get('trusted') === ['10.0.0.1', 'private', '173.245.48.0/20'] && $c->get('ttl') === 60 && $c->get('timeout') === 0.5);

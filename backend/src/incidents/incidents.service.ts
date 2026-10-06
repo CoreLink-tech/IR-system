@@ -65,10 +65,9 @@ export class IncidentsService {
 
     // An incident that has been quiet for over 30 minutes no longer takes new events.
     // Release its slot so a fresh incident can open for new activity.
-    await this.prisma.securityIncident.updateMany({
-      where: { openKey: key, updatedAt: { lt: cutoff } },
-      data: { openKey: null },
-    });
+    // Raw SQL on purpose: an ordinary update would also stamp "last updated" with the
+    // current time, making an incident that has been quiet for hours look freshly active.
+    await this.prisma.$executeRaw`UPDATE security_incidents SET openKey = NULL WHERE openKey = ${key} AND updatedAt < ${cutoff}`;
 
     const existing = await this.findOpen(key);
     if (existing) return this.attach(existing, input);

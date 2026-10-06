@@ -56,7 +56,34 @@ final class SecurityReporter
         if (empty($payload['timestamp'])) {
             $payload['timestamp'] = gmdate('c');
         }
+        // One id per event, fixed now. If delivery times out after the server already stored
+        // the event and it has to be sent again, the server recognises the id and keeps one copy.
+        if (empty($payload['event_id'])) {
+            $payload['event_id'] = bin2hex(random_bytes(12));
+        }
         $this->buffer[] = $payload;
+        $this->scheduleFlush();
+    }
+
+    /**
+     * Sends the queued backlog even on a page that reports nothing. Without this, events
+     * queued during an outage would sit on disk until something new happened to be
+     * reported, which on a quiet shop could be hours. It costs one file check per page.
+     */
+    public function replayIfNeeded(): void
+    {
+        if ($this->replayMax > 0 && $this->spool->hasEvents() && $this->breaker->allow()) {
+            $this->scheduleFlush();
+        }
+    }
+
+    public function isScheduled(): bool
+    {
+        return $this->shutdownRegistered;
+    }
+
+    private function scheduleFlush(): void
+    {
         if (!$this->shutdownRegistered) {
             $this->shutdownRegistered = true;
             register_shutdown_function([$this, 'flushAfterResponse']);

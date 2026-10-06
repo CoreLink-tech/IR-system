@@ -108,6 +108,7 @@ check('a login failure is sent as one event', count($sent) === 1 && ($body['even
 check('it carries the real visitor, user, agent, method and path', ($body['ip_address'] ?? '') === '203.0.113.7' && ($body['user_id'] ?? '') === 'user-42' && ($body['user_agent'] ?? '') === 'TestBrowser/1.0' && ($body['request_method'] ?? '') === 'POST' && ($body['request_path'] ?? '') === '/login?next=/account');
 check('the password never leaves the website', strpos(json_encode($body), 'hunter2') === false && ($body['metadata']['password'] ?? '') === '[REDACTED]' && ($body['metadata']['shipping_address'] ?? '') === '12 Marina Rd');
 check('the raw session id never leaves the website, only a one-way token', strpos(json_encode($body), 'rawsessionid') === false && strlen($body['session_id'] ?? '') === 32);
+check('it has its own event id, so a repeat delivery is recognised by the server', strlen($body['event_id'] ?? '') === 24);
 check('it has a request id and a current timestamp', strlen($body['request_id'] ?? '') === 24 && abs(strtotime($body['timestamp'] ?? '') - time()) < 10);
 
 $types = ['loginSuccess' => ['login_success', 'INFO'], 'passwordReset' => ['password_reset', 'LOW'], 'adminAccess' => ['admin_access', 'INFO'], 'paymentIssue' => ['payment_security_event', 'MEDIUM']];
@@ -165,6 +166,20 @@ Security::boot($dead, ['REMOTE_ADDR' => '203.0.113.9'], $logger, $deny);
 Security::loginFailed('u4'); Security::reporter()->flush();
 $later = microtime(true) - $t;
 check('after repeated failures the breaker stops the waiting; events are still kept', $later < 0.5 && Security::reporter()->backlog() === 4, sprintf('%.2fs backlog=%d', $later, Security::reporter()->backlog()));
+
+// -- a quiet page delivers the backlog left by an earlier outage
+script(['status' => 201, 'body' => ['id' => 'e']]);
+$shared = ['SECURITY_STATE_DIR' => "$stateRoot/shared"];
+Security::boot($cfg($shared + ['SECURITY_API_BASE' => 'http://127.0.0.1:1']), ['REMOTE_ADDR' => '203.0.113.9'], $logger, $deny);
+Security::loginFailed('q1'); Security::loginFailed('q2'); Security::reporter()->flush();
+check('events reported while the API is down are queued', Security::reporter()->backlog() === 2);
+Security::boot($cfg($shared), ['REMOTE_ADDR' => '203.0.113.9'], $logger, $deny);
+check('the next page, even one that reports nothing, schedules their delivery', Security::reporter()->isScheduled() === true);
+Security::reporter()->flush();
+$ids = array_column(posts(), 'event_id');
+check('the queued events are delivered, each with the id it was given when it happened', count($ids) === 2 && $ids[0] !== $ids[1] && Security::reporter()->backlog() === 0);
+Security::boot($cfg(['SECURITY_STATE_DIR' => "$stateRoot/empty"]), ['REMOTE_ADDR' => '203.0.113.9'], $logger, $deny);
+check('a page with nothing queued schedules nothing', Security::reporter()->isScheduled() === false);
 
 echo "\n$passed passed, $failed failed\n";
 exit($failed === 0 ? 0 : 1);

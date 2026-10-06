@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { AppThrottlerGuard } from './common/guards/app-throttler.guard';
 import { APP_GUARD } from '@nestjs/core';
 
 import { PrismaModule } from './prisma/prisma.module';
@@ -23,10 +24,10 @@ import { SecuritySyncController } from './security/security.controller';
   imports: [
     ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env'] }),
     ThrottlerModule.forRoot([
-      {
-        ttl: Number(process.env.THROTTLE_TTL || 60) * 1000,
-        limit: Number(process.env.THROTTLE_LIMIT || 120),
-      },
+      // Administrators and anonymous callers, per route and per client address.
+      { name: 'ip', ttl: Number(process.env.THROTTLE_TTL || 60) * 1000, limit: Number(process.env.THROTTLE_LIMIT || 120) },
+      // The website, per route and per API key. See AppThrottlerGuard.
+      { name: 'key', ttl: Number(process.env.THROTTLE_TTL || 60) * 1000, limit: Number(process.env.THROTTLE_KEY_LIMIT || 6000) },
     ]),
     PrismaModule,
     AuditModule,
@@ -42,7 +43,7 @@ import { SecuritySyncController } from './security/security.controller';
   ],
   controllers: [SecuritySyncController],
   providers: [
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: AppThrottlerGuard },
     JwtOrApiKeyGuard, ApiKeyGuard, JwtAuthGuard,
   ],
 })

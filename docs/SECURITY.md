@@ -29,6 +29,17 @@ check, copying it unchanged would let anyone forge an administrator login. Gener
 real values with `npm run gen:secrets`. `CORS_ORIGINS` may not be `*`. Seeding
 production requires an explicit `BOOTSTRAP_ADMIN_PASSWORD`.
 
+## Rate limiting
+Counted per route. Administrators and anonymous callers per address, sign-in and token
+refresh much tighter (20 a minute), and the website per API key with a large allowance, so
+a busy shop is not refused during an attack and a leaked key is still bounded. Refusals
+carry `Retry-After`.
+
+## Concurrency
+Parallel requests from one attacker are safe: the database itself allows one open incident
+per address, account or attack and one active block per address, counters are incremented
+in the database, and an event sent twice with the same `event_id` is stored once.
+
 ## Authentication
 - Login compares the password even for an unknown email or a disabled account, so
   response time does not reveal which emails exist.

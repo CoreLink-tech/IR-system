@@ -36,6 +36,7 @@ Set the environment variables (in your web server, PHP-FPM pool, or `.env` loade
 | `SECURITY_BLOCKLIST_TTL` | Seconds between blocklist refreshes | `30` |
 | `SECURITY_API_TIMEOUT` | Seconds to wait for the API on each call | `1.0` |
 | `SECURITY_FLUSH_BUDGET` | Seconds allowed for sending events after the page is sent | `1.5` |
+| `SECURITY_BREAKER_OPEN` | Seconds to stop calling the API after 3 failures in a row | `30` |
 
 Then run the checker on the web server, as the same user PHP runs as:
 

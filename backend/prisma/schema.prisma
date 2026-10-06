@@ -71,6 +71,9 @@ model SecurityEvent {
   requestMethod String?
   requestPath   String?
   requestId     String?
+  // Chosen by the sender, one per event. If a delivery is repeated (a timeout after the
+  // server had already stored it), the repeat is recognised and not stored twice.
+  externalId    String?
   metadata      Json?
   riskScore     Int      @default(0)
   riskLevel     String   @default("NORMAL")
@@ -84,6 +87,7 @@ model SecurityEvent {
 
   incident SecurityIncident? @relation(fields: [incidentId], references: [id])
 
+  @@unique([apiKeyId, externalId])
   @@index([ipAddress])
   @@index([occurredAt])
   @@index([eventType])

@@ -38,6 +38,10 @@ short timeout, while the others carry on with the previous copy.
   itself or its proxy out, even if the blocklist contains such an address.
 - **Secrets stay home.** Passwords, tokens and similar are redacted before sending,
   and the session id is replaced by a one-way token.
+- **Events are never stored twice.** Every event gets its own id when it happens. If a
+  delivery times out after the server had already stored the event, the retry carries the
+  same id and the server keeps one copy. Queued events are also sent on any later page view,
+  not only when something new is reported.
 - **Events survive outages.** Undelivered events are queued on disk, bounded in size,
   and sent later with their original timestamps (the server accepts old events and
   rejects ones from the future). An event the server rejects with a 4xx is dropped,

@@ -42,7 +42,18 @@ blocking, address parsing, configuration check).
   login check and the services replaced.
 - A test that found a bug keeps a regression case named after the bug.
 
+## End-to-end suite
+
+`e2e/run.mjs` starts nothing itself. It talks to a running API, database and the real PHP
+library, with nothing mocked, and takes about two minutes. It is the check that the
+pieces work together: attack to incident to block to the website refusing the visitor,
+reports that quote the stored numbers, parallel traffic, rate limits, and recovery after
+the API or database goes down. See `e2e/README.md`.
+
+    E2E_CONFIRM=yes node e2e/run.mjs       # writes test data: use a test database
+
 ## Not covered by unit tests
 
-Against a real MySQL or MariaDB, and with the real Prisma engine: schema creation,
-query behavior, and performance. That is Stage 8 (end-to-end) and Stage 10 (load).
+Behavior with the real Prisma 5 engine and MySQL (the end-to-end runs were made on
+MariaDB with Prisma 6's driver adapter, because the sandbox could not download Prisma's
+engine), and performance under sustained load. Load testing is Stage 10.

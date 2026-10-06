@@ -18,7 +18,8 @@
     "test:cov": "jest --coverage",
     "gen:secrets": "node scripts/gen-secrets.js",
     "test:php": "php ../integration/php/tests/all.php",
-    "test:all": "jest --coverage && php ../integration/php/tests/all.php"
+    "test:all": "jest --coverage && php ../integration/php/tests/all.php",
+    "test:e2e": "node ../e2e/run.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.4",

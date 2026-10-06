@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateEventDto } from './dto';
 import { normalizeIp } from '../common/utils/ip.util';
 import { parseDateParam } from '../common/utils/pagination.util';
+import { isUniqueViolation } from '../common/utils/db-errors';
 import { AuditService } from '../audit/audit.service';
 import { AUDIT_ACTIONS } from '../common/constants';
 import { DetectionService } from '../detection/detection.service';
@@ -82,6 +83,14 @@ export class EventsService {
     private readonly ips: IpsService,
   ) {}
 
+  private findByExternalId(apiKeyId: string, externalId: string) {
+    return this.prisma.securityEvent.findFirst({ where: { apiKeyId, externalId } });
+  }
+
+  private duplicateResult(e: { id: string; riskScore: number; riskLevel: string; incidentId: string | null }) {
+    return { id: e.id, riskScore: e.riskScore, riskLevel: e.riskLevel, incidentId: e.incidentId, duplicate: true };
+  }
+
   async ingest(dto: CreateEventDto, ctx: { apiKeyId?: string; requestId?: string; ip?: string; userAgent?: string }) {
     const ipAddress = dto.ip_address ? normalizeIp(dto.ip_address) : ctx.ip ? normalizeIp(ctx.ip) : undefined;
     const occurredAt = dto.timestamp ? new Date(dto.timestamp) : new Date();
@@ -93,14 +102,33 @@ export class EventsService {
 
     const metadata = sanitizeMetadata(dto.metadata ?? {});
 
-    const created = await this.prisma.securityEvent.create({
-      data: {
-        eventType: dto.event_type, severity: dto.severity, ipAddress,
-        userId: dto.user_id, sessionId: dto.session_id, userAgent: dto.user_agent,
-        requestMethod: dto.request_method, requestPath: redactPath(dto.request_path),
-        requestId: dto.request_id, metadata, occurredAt, apiKeyId: ctx.apiKeyId,
-      },
-    });
+    // A repeat of an event that was already stored (the sender timed out and tried again)
+    // is answered with the original result and stored only once. Scoped to the API key, so
+    // one sender can never see or collide with another's ids.
+    const externalId = dto.event_id && ctx.apiKeyId ? dto.event_id : undefined;
+    if (externalId) {
+      const prior = await this.findByExternalId(ctx.apiKeyId!, externalId);
+      if (prior) return this.duplicateResult(prior);
+    }
+
+    let created;
+    try {
+      created = await this.prisma.securityEvent.create({
+        data: {
+          eventType: dto.event_type, severity: dto.severity, ipAddress,
+          userId: dto.user_id, sessionId: dto.session_id, userAgent: dto.user_agent,
+          requestMethod: dto.request_method, requestPath: redactPath(dto.request_path),
+          requestId: dto.request_id, metadata, occurredAt, apiKeyId: ctx.apiKeyId, externalId,
+        },
+      });
+    } catch (err) {
+      // Two copies of the same event arrived at the same moment; the other one won.
+      if (externalId && isUniqueViolation(err)) {
+        const prior = await this.findByExternalId(ctx.apiKeyId!, externalId);
+        if (prior) return this.duplicateResult(prior);
+      }
+      throw err;
+    }
 
     if (ipAddress) {
       await this.ips.touch(ipAddress, dto.event_type)

@@ -44,6 +44,17 @@ final class EventSpool
         return $ok === true;
     }
 
+    /** A cheap check, one file stat, that is safe to make on every page view. */
+    public function hasEvents(): bool
+    {
+        if (!$this->store->usable()) {
+            return false;
+        }
+        $file = $this->store->path(self::FILE);
+        clearstatcache(true, $file);
+        return is_file($file) && (int) @filesize($file) > 0;
+    }
+
     public function count(): int
     {
         $raw = $this->store->usable() ? @file_get_contents($this->store->path(self::FILE)) : false;

@@ -16,6 +16,7 @@ namespace App\Security;
  *   SECURITY_API_TIMEOUT         seconds per API call, default 1.0
  *   SECURITY_BLOCKLIST_TTL       seconds between blocklist refreshes, default 30
  *   SECURITY_FLUSH_BUDGET        seconds allowed for sending events after the response, default 1.5
+ *   SECURITY_BREAKER_OPEN        seconds to stop calling the API after repeated failures, default 30
  */
 final class SecurityConfig
 {
@@ -53,6 +54,7 @@ final class SecurityConfig
             'timeout'      => max(0.2, (float) $get('SECURITY_API_TIMEOUT', '1.0')),
             'ttl'          => max(1, (int) $get('SECURITY_BLOCKLIST_TTL', '30')),
             'flushBudget'  => max(0.2, (float) $get('SECURITY_FLUSH_BUDGET', '1.5')),
+            'breakerOpen'  => max(1, (int) $get('SECURITY_BREAKER_OPEN', '30')),
         ]);
     }
 

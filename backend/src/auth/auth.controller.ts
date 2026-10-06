@@ -1,4 +1,5 @@
 import { Body, Controller, Post, Req, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { ChangePasswordDto, CreateUserDto, LoginDto, RefreshDto } from './dto';
 import { extractIp } from '../common/utils/ip.util';
@@ -14,6 +15,10 @@ export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   @Public()
+  // Password guessing is the most attractive target on a security product, so signing in
+  // gets its own, much smaller allowance per address (read when the request arrives, so
+  // it follows the environment file).
+  @Throttle({ ip: { limit: () => Number(process.env.THROTTLE_LOGIN_LIMIT || 20), ttl: () => Number(process.env.THROTTLE_TTL || 60) * 1000 } })
   @Post('login')
   async login(@Body() dto: LoginDto, @Req() req: any) {
     return this.auth.login(dto.email, dto.password, {
@@ -22,6 +27,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ ip: { limit: () => Number(process.env.THROTTLE_LOGIN_LIMIT || 20), ttl: () => Number(process.env.THROTTLE_TTL || 60) * 1000 } })
   @Post('refresh')
   async refresh(@Body() dto: RefreshDto, @Req() req: any) {
     return this.auth.refresh(dto.refreshToken, {

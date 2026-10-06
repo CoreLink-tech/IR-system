@@ -156,6 +156,11 @@ function incidentStore(seed: any[] = [], opts: { staleReads?: number } = {}) {
         const r = { id: `inc${rows.length}`, createdAt: new Date(), updatedAt: new Date(), ...data }; rows.push(r); return r;
       },
     },
+    // Releases the slot of an incident that has been quiet, WITHOUT touching its updatedAt.
+    $executeRaw: async (_sql: TemplateStringsArray, key: string, cutoff: Date) => {
+      rows.filter((r) => r.openKey === key && r.updatedAt < cutoff).forEach((r) => { r.openKey = null; });
+      return 1;
+    },
     securityIncidentTimeline: { create: async ({ data }: any) => { timeline.push(data); } },
     securityEvent: { update: async ({ where, data }: any) => { events.push({ id: where.id, ...data }); } },
   };
@@ -278,6 +283,13 @@ describe('parallel requests from one attacker', () => {
     expect(s.rows).toHaveLength(2);
     expect(s.rows[0].openKey).toBeNull();
     expect(s.rows[1].openKey).toBe('ip:198.51.100.7');
+  });
+
+  it('releasing a quiet incident does not make it look recently active', async () => {
+    const quietSince = new Date(Date.now() - 3 * 3600_000);
+    const s = incidentStore([{ sourceIp: '198.51.100.7', detectionRule: 'x', severity: 'HIGH', riskScore: 50, updatedAt: quietSince }]);
+    await s.svc.createFromDetection(base);
+    expect(s.rows[0].updatedAt).toEqual(quietSince);
   });
 
   it('gives each kind of incident its own slot', () => {

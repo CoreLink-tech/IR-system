@@ -95,6 +95,22 @@ POST /api/v1/auth/users
       "timestamp": "2025-01-01T12:00:00.000Z"
     }
 
+## Rate limits
+
+Limits are counted per route. Administrators and anonymous callers are counted per
+client address (default 120 requests a minute); signing in and refreshing are limited
+more tightly (20 a minute). The website is counted per API key, with a much larger
+allowance (default 6000 a minute), because every visitor's events arrive from one
+server address. A refused request gets `429` and a `Retry-After` header in seconds.
+Settings: `THROTTLE_LIMIT`, `THROTTLE_KEY_LIMIT`, `THROTTLE_LOGIN_LIMIT`, `THROTTLE_TTL`.
+
+## Sending the same event twice
+
+`POST /events` accepts an optional `event_id` (up to 64 characters of letters, digits,
+dot, colon, underscore or hyphen). If the same API key sends the same `event_id` again,
+for example after a timeout, the original event's result is returned with
+`"duplicate": true` and nothing is stored a second time. Ids are scoped to the key.
+
 ## Reports
 
 All report endpoints are read-only, require an administrator login (JWT), send

@@ -86,12 +86,14 @@ final class Security
             $self->reporter = new SecurityReporter(
                 new SecurityClient((string) $config->get('base'), (string) $config->get('key'), (float) $config->get('timeout'), 1, $log),
                 new EventSpool($store, 524288, $log),
-                new CircuitBreaker($store, 'events'),
+                new CircuitBreaker($store, 'events', 3, (int) $config->get('breakerOpen')),
                 (float) $config->get('flushBudget'),
                 20,
                 $log
             );
             self::$instance = $self;
+            // Deliver anything queued during an earlier outage, after this response is sent.
+            $self->reporter->replayIfNeeded();
 
             if ($self->clientIp->looksMisconfigured($self->server)) {
                 $self->warnOnce($store, 'proxy-hint', 'security_proxy_not_trusted', [
