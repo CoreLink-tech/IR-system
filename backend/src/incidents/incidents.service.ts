@@ -7,6 +7,8 @@ import { isUniqueViolation } from '../common/utils/db-errors';
 /** An incident stays open to new events while it has had activity within this time. */
 const INCIDENT_ACTIVITY_WINDOW_MS = 30 * 60 * 1000;
 const SEVERITY_ORDER = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+/** Who an incident is assigned to, as shown in lists. Never the password hash. */
+const ASSIGNEE_FIELDS = { id: true, email: true, name: true } as const;
 
 /**
  * The slot an open incident occupies: one per address, one per (account, rule), or one per
@@ -158,7 +160,7 @@ export class IncidentsService {
 
   async list(params: {
     skip: number; take: number; sortBy: string; sortOrder: 'asc' | 'desc';
-    filters?: { status?: string; severity?: string; sourceIp?: string; assignedTo?: string };
+    filters?: { status?: string; severity?: string; sourceIp?: string; assignedTo?: string; search?: string };
   }) {
     const where: any = {};
     const f = params.filters || {};
@@ -167,17 +169,28 @@ export class IncidentsService {
     if (f.sourceIp) where.sourceIp = f.sourceIp;
     if (f.assignedTo) where.assignedTo = f.assignedTo;
 
+    // Search by the start of an address or of the public number (INC-...). Both are indexed
+    // prefixes, and only characters that can occur in either are kept.
+    const search = String(f.search ?? '').replace(/[^0-9a-zA-Z:.\-]/g, '').slice(0, 45);
+    if (search) where.OR = [{ sourceIp: { startsWith: search.toLowerCase() } }, { incidentId: { startsWith: search.toUpperCase() } }];
+
     const [data, total] = await Promise.all([
-      this.prisma.securityIncident.findMany({ where, skip: params.skip, take: params.take, orderBy: { [params.sortBy]: params.sortOrder } }),
+      this.prisma.securityIncident.findMany({
+        where, skip: params.skip, take: params.take, orderBy: { [params.sortBy]: params.sortOrder },
+        include: { assignee: { select: ASSIGNEE_FIELDS } },
+      }),
       this.prisma.securityIncident.count({ where }),
     ]);
     return { data, total };
   }
 
-  async findOne(id: string) {
+  /** Accepts the internal id or the public number (INC-...), as the report routes do. */
+  async findOne(idOrNumber: string) {
+    const where = /^INC-/i.test(idOrNumber) ? { incidentId: idOrNumber.toUpperCase() } : { id: idOrNumber };
     const incident = await this.prisma.securityIncident.findUnique({
-      where: { id },
+      where,
       include: {
+        assignee: { select: ASSIGNEE_FIELDS },
         timeline: { orderBy: { createdAt: 'asc' } },
         events: { orderBy: { occurredAt: 'desc' }, take: 200 },
       },
@@ -247,5 +260,29 @@ export class IncidentsService {
       result: 'SUCCESS', metadata: { assignedTo },
     });
     return updated;
+  }
+
+  /**
+   * Adds a free-text note to the timeline. It changes nothing else: not the status, not the
+   * assignee, and not the incident's own "last updated" time.
+   */
+  async addNote(idOrNumber: string, note: string, actorId: string, actorLabel: string) {
+    const incident = await this.resolve(idOrNumber);
+    const entry = await this.prisma.securityIncidentTimeline.create({
+      data: { incidentId: incident.id, action: 'note.added', actor: actorLabel, details: note },
+    });
+    await this.audit.log({
+      actorType: 'USER', actorId, actorLabel,
+      action: AUDIT_ACTIONS.INCIDENT_NOTE, targetType: 'security_incident', targetId: incident.id,
+      result: 'SUCCESS', metadata: { length: note.length },
+    });
+    return entry;
+  }
+
+  private async resolve(idOrNumber: string) {
+    const where = /^INC-/i.test(idOrNumber) ? { incidentId: idOrNumber.toUpperCase() } : { id: idOrNumber };
+    const incident = await this.prisma.securityIncident.findUnique({ where });
+    if (!incident) throw new NotFoundException('Incident not found');
+    return incident;
   }
 }

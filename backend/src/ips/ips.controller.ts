@@ -1,5 +1,6 @@
-import { Controller, Get, NotFoundException, Param, Post, UseGuards } from '@nestjs/common';
-import { IpsService } from './ips.service';
+import { Controller, Get, NotFoundException, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { IP_LIST_SORTS, IpsService } from './ips.service';
+import { parsePagination, toPaginated } from '../common/utils/pagination.util';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -15,6 +16,17 @@ export class IpsController {
     private readonly service: IpsService,
     private readonly intel: IpIntelligenceService,
   ) {}
+
+  /** Addresses seen so far, with filters. Closed to viewers because it is a view of raw activity. */
+  @Get()
+  @Roles(ROLES.SUPER_ADMIN, ROLES.SECURITY_ADMIN, ROLES.ANALYST)
+  async list(@Query() q: any) {
+    const p = parsePagination(q, { sortBy: 'lastSeenAt', allowedSort: IP_LIST_SORTS });
+    const { data, total } = await this.service.list({
+      ...p, filters: { riskLevel: q.riskLevel, blocked: q.blocked, country: q.country, search: q.search },
+    });
+    return toPaginated(data, total, p.page, p.pageSize);
+  }
 
   @Get(':ip')
   @Roles(ROLES.SUPER_ADMIN, ROLES.SECURITY_ADMIN, ROLES.ANALYST, ROLES.VIEWER)

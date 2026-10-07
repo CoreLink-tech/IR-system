@@ -4,7 +4,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { ROLES } from '../common/constants';
-import { AssignIncidentDto, UpdateIncidentStatusDto } from './dto';
+import { AddIncidentNoteDto, AssignIncidentDto, UpdateIncidentStatusDto } from './dto';
 import { parsePagination, toPaginated } from '../common/utils/pagination.util';
 import { ActorContext, CurrentActor } from '../common/decorators/current-actor.decorator';
 
@@ -21,7 +21,7 @@ export class IncidentsController {
     });
     const { data, total } = await this.service.list({
       ...p,
-      filters: { status: q.status, severity: q.severity, sourceIp: q.sourceIp, assignedTo: q.assignedTo },
+      filters: { status: q.status, severity: q.severity, sourceIp: q.sourceIp, assignedTo: q.assignedTo, search: q.search },
     });
     return toPaginated(data, total, p.page, p.pageSize);
   }
@@ -43,6 +43,12 @@ export class IncidentsController {
   @Roles(ROLES.SUPER_ADMIN, ROLES.SECURITY_ADMIN, ROLES.ANALYST)
   updateStatus(@Param('id') id: string, @Body() dto: UpdateIncidentStatusDto, @CurrentActor() actor: ActorContext) {
     return this.service.updateStatus(id, dto.status, dto.notes, actor.id!, actor.label || actor.role || 'unknown');
+  }
+
+  @Post(':id/notes')
+  @Roles(ROLES.SUPER_ADMIN, ROLES.SECURITY_ADMIN, ROLES.ANALYST)
+  addNote(@Param('id') id: string, @Body() dto: AddIncidentNoteDto, @CurrentActor() actor: ActorContext) {
+    return this.service.addNote(id, dto.note, actor.id!, actor.label || actor.role || 'unknown');
   }
 
   @Post(':id/assign')

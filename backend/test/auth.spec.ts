@@ -44,7 +44,7 @@ describe('AuthService.login', () => {
   it('returns tokens and a public user without the password hash', async () => {
     const s = await withUser(store());
     const r = await s.svc.login('admin@pishon.ng', 'CorrectHorse!1', ctx);
-    expect(r.user).toEqual({ id: 'u0', email: 'admin@pishon.ng', name: 'Admin', role: 'SECURITY_ADMIN', isActive: true });
+    expect(r.user).toEqual({ id: 'u0', email: 'admin@pishon.ng', name: 'Admin', role: 'SECURITY_ADMIN', isActive: true, mustChangePassword: false });
     expect(JSON.stringify(r)).not.toContain('passwordHash');
     expect(r.accessToken).toBeTruthy();
     expect(r.refreshToken).toBeTruthy();
@@ -195,7 +195,7 @@ describe('AuthService.createUser', () => {
   it('hashes the password and never returns the hash', async () => {
     const s = store();
     const u = await s.svc.createUser({ email: 'New@Pishon.ng', password: 'a-long-password-1', name: 'New', role: 'ANALYST' });
-    expect(u).toEqual({ id: expect.any(String), email: 'new@pishon.ng', name: 'New', role: 'ANALYST', isActive: true });
+    expect(u).toEqual({ id: expect.any(String), email: 'new@pishon.ng', name: 'New', role: 'ANALYST', isActive: true, mustChangePassword: false });
     expect(s.users[0].passwordHash).not.toContain('a-long-password-1');
     expect(await bcrypt.compare('a-long-password-1', s.users[0].passwordHash)).toBe(true);
   });
@@ -219,7 +219,7 @@ describe('AuthService.createUser auditing', () => {
     );
     expect(s.audit.log).toHaveBeenCalledWith(expect.objectContaining({
       action: 'user.create', actorType: 'USER', actorId: 'u0', actorLabel: 'root@pishon.ng', targetType: 'user',
-      result: 'SUCCESS', metadata: { email: 'new@pishon.ng', role: 'ANALYST' },
+      result: 'SUCCESS', metadata: { email: 'new@pishon.ng', role: 'ANALYST', requirePasswordChange: false },
     }));
     expect(JSON.stringify((s.audit.log as jest.Mock).mock.calls)).not.toContain('a-long-password-1');
   });
@@ -265,5 +265,35 @@ describe('AuthService.changePassword', () => {
     const s = await withUser(store(), { isActive: false });
     await expect(change(s, 'CorrectHorse!1', 'A-Brand-New-Passphrase-9')).rejects.toBeInstanceOf(UnauthorizedException);
     await expect(store().svc.changePassword('ghost', 'x', 'y', ctx)).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+});
+
+
+describe('AuthService.me', () => {
+  it('returns the signed-in account, including whether it must change its password', async () => {
+    const s = await withUser(store(), { mustChangePassword: true });
+    expect(await s.svc.me('u0')).toEqual({ id: 'u0', email: 'admin@pishon.ng', name: 'Admin', role: 'SECURITY_ADMIN', isActive: true, mustChangePassword: true });
+  });
+  it('refuses an account that no longer exists or has been switched off', async () => {
+    const s = await withUser(store(), { isActive: false });
+    await expect(s.svc.me('u0')).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(s.svc.me('missing')).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+});
+
+describe('AuthService.verifyRefreshJwt', () => {
+  it('accepts a real refresh token', async () => {
+    const s = await withUser(store());
+    const { refreshToken } = await s.svc.login('admin@pishon.ng', 'CorrectHorse!1', ctx);
+    await expect(s.svc.verifyRefreshJwt(refreshToken)).resolves.toBeUndefined();
+  });
+  it('rejects an access token, a tampered token and garbage, with the no_session code', async () => {
+    const s = await withUser(store());
+    const { accessToken, refreshToken } = await s.svc.login('admin@pishon.ng', 'CorrectHorse!1', ctx);
+    for (const bad of [accessToken, refreshToken.slice(0, -3) + 'abc', 'garbage', '']) {
+      const err: any = await s.svc.verifyRefreshJwt(bad).catch((e) => e);
+      expect(err).toBeInstanceOf(UnauthorizedException);
+      expect(err.getResponse().code).toBe('no_session');
+    }
   });
 });

@@ -1,4 +1,4 @@
-import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 const STATUSES = ['OPEN', 'INVESTIGATING', 'CONTAINED', 'RESOLVED', 'FALSE_POSITIVE'];
 
@@ -9,4 +9,8 @@ export class UpdateIncidentStatusDto {
 
 export class AssignIncidentDto {
   @IsString() assignedTo!: string;
+}
+
+export class AddIncidentNoteDto {
+  @IsString() @MinLength(1) @MaxLength(2000) note!: string;
 }

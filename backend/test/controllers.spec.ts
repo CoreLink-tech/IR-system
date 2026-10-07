@@ -4,6 +4,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AuthController } from '../src/auth/auth.controller';
 import { AuthService } from '../src/auth/auth.service';
+import { UsersService } from '../src/auth/users.service';
 import { AuditController } from '../src/audit/audit.controller';
 import { BlockingController } from '../src/blocking/blocking.controller';
 import { BlockingService } from '../src/blocking/blocking.service';
@@ -55,7 +56,7 @@ describe('Controllers (real validation and role checks, services stubbed)', () =
     const mod = await Test.createTestingModule({
       controllers: [AuthController, AuditController, BlockingController, StatisticsController, IncidentsController, IpsController, ApiKeysController],
       providers: [
-        { provide: AuthService, useValue: auth }, { provide: BlockingService, useValue: blocking },
+        { provide: AuthService, useValue: auth }, { provide: UsersService, useValue: {} }, { provide: BlockingService, useValue: blocking },
         { provide: StatisticsService, useValue: stats }, { provide: IncidentsService, useValue: incidents },
         { provide: IpsService, useValue: ips }, { provide: IpIntelligenceService, useValue: intel },
         { provide: ApiKeysService, useValue: keys }, { provide: PrismaService, useValue: prisma },
@@ -84,11 +85,14 @@ describe('Controllers (real validation and role checks, services stubbed)', () =
       await http().post('/api/v1/auth/login').send({ email: 'a@pishon.ng', password: 'long-enough-1', admin: true }).expect(400);
       expect(auth.login).not.toHaveBeenCalled();
     });
-    it('refresh and logout are open but need a token in the body', async () => {
+    it('refresh and logout are open; with no token in the body they look for the browser cookie', async () => {
       await http().post('/api/v1/auth/refresh').send({ refreshToken: 'abc' }).expect(201);
-      await http().post('/api/v1/auth/refresh').send({}).expect(400);
-      expect(await http().post('/api/v1/auth/logout').send({ refreshToken: 'abc' }).expect(201).then((r) => r.body)).toEqual({ ok: true });
-      await http().post('/api/v1/auth/logout').send({}).expect(400);
+      // No body token and no cookie: there is no session to refresh (not a validation error).
+      const r = await http().post('/api/v1/auth/refresh').send({}).expect(401);
+      expect(r.body.code).toBe('no_session');
+      expect(await http().post('/api/v1/auth/logout').send({ refreshToken: 'abc' }).expect(201).then((x) => x.body)).toEqual({ ok: true });
+      // Signing out with nothing to sign out of is harmless.
+      expect(await http().post('/api/v1/auth/logout').send({}).expect(201).then((x) => x.body)).toEqual({ ok: true });
     });
     it('only the super admin can create users, with a strong password and a valid email', async () => {
       const body = { email: 'n@pishon.ng', password: 'a-long-password-1', role: 'ANALYST' };

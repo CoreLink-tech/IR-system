@@ -21,6 +21,8 @@ export class AuditController {
     if (q.actorType) where.actorType = q.actorType;
     if (q.action) where.action = { contains: q.action };
     if (q.result) where.result = q.result;
+    if (q.targetId) where.targetId = String(q.targetId);
+    if (q.targetType) where.targetType = String(q.targetType);
     const from = parseDateParam(q.from, 'from');
     const to = parseDateParam(q.to, 'to');
     if (from || to) {

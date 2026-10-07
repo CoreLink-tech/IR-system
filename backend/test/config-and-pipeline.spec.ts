@@ -287,7 +287,7 @@ describe('JwtStrategy', () => {
 
   it('returns the current user, taking the role from the database rather than the token', async () => {
     const s = strategy({ id: 'u1', email: 'a@b.ng', role: 'VIEWER', name: 'A', isActive: true });
-    expect(await s.validate({ sub: 'u1', email: 'a@b.ng', role: 'SUPER_ADMIN', type: 'access' })).toEqual({ id: 'u1', email: 'a@b.ng', role: 'VIEWER', name: 'A' });
+    expect(await s.validate({ sub: 'u1', email: 'a@b.ng', role: 'SUPER_ADMIN', type: 'access' })).toEqual({ id: 'u1', email: 'a@b.ng', role: 'VIEWER', name: 'A', mustChangePassword: false });
   });
   it('refuses a refresh token used as an access token, and an empty payload', async () => {
     const s = strategy({ id: 'u1', isActive: true });

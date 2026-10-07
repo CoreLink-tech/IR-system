@@ -67,6 +67,7 @@ export class DetectionService {
         failedLoginsLastWindow, eventsLastWindow,
         distinctUsersLastWindow: distinctUsersRow.length,
         passwordResetsLastWindow,
+        windowMinutes,
         ipIntel: intel ? {
           isVpn: intel.isVpn, isProxy: intel.isProxy, isTor: intel.isTor,
           isDatacenter: intel.isDatacenter, isMalicious: intel.isMalicious,

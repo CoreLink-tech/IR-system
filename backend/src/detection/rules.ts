@@ -15,6 +15,11 @@ export interface RuleContext {
     eventsLastWindow: number;
     distinctUsersLastWindow: number;
     passwordResetsLastWindow: number;
+    /**
+     * The length of the window the four counts above were taken over. The detector queries a
+     * fixed window, so reasons must quote this number and not a value from the rule's config.
+     */
+    windowMinutes?: number;
     ipIntel?: {
       isVpn: boolean; isProxy: boolean; isTor: boolean;
       isDatacenter: boolean; isMalicious: boolean; reputationScore: number;
@@ -89,7 +94,7 @@ export const BUILT_IN_RULES: RuleDefinition[] = [
       const delta = Math.min(cfg.maxRisk, n * cfg.riskPerAttempt);
       return {
         matched: true, riskDelta: delta,
-        reason: `${n} failed logins in ${cfg.windowMinutes} min`,
+        reason: `${n} failed logins in ${ctx.stats.windowMinutes ?? 10} min`,
         createIncident: n >= cfg.incidentAt,
         incidentSeverity: n >= 20 ? 'CRITICAL' : n >= 10 ? 'HIGH' : 'MEDIUM',
       };
@@ -121,7 +126,7 @@ export const BUILT_IN_RULES: RuleDefinition[] = [
       if (ctx.stats.eventsLastWindow < cfg.threshold) return { matched: false, riskDelta: 0 };
       return {
         matched: true, riskDelta: cfg.riskDelta,
-        reason: `${ctx.stats.eventsLastWindow} events in ${cfg.windowMinutes} min`,
+        reason: `${ctx.stats.eventsLastWindow} events in ${ctx.stats.windowMinutes ?? 10} min`,
       };
     },
   },

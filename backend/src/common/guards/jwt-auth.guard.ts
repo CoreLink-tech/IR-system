@@ -1,9 +1,12 @@
-import { ExecutionContext, Injectable } from '@nestjs/common';
+import { ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { AuthGuard } from '@nestjs/passport';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { ActorContext } from '../decorators/current-actor.decorator';
 import { extractIp } from '../utils/ip.util';
+
+/** Routes a signed-in account may still use while it is required to change its password. */
+export const MAY_CHANGE_PASSWORD_ROUTES = ['/api/v1/auth/me', '/api/v1/auth/change-password'];
 
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {
@@ -34,6 +37,14 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       requestId: req.requestId,
     };
     req.actor = actor;
+    // After an administrator resets a password, the account may do nothing except look at
+    // itself and set a new password. Enforced here, on the server, not only in the dashboard.
+    if (result.mustChangePassword) {
+      const path = String(req.originalUrl || req.url || '').split('?')[0];
+      if (!MAY_CHANGE_PASSWORD_ROUTES.includes(path)) {
+        throw new ForbiddenException({ message: 'You must change your password before continuing', code: 'password_change_required' });
+      }
+    }
     return result;
   }
 }

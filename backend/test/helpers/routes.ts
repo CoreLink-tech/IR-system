@@ -12,10 +12,14 @@ import { IpsController } from '../../src/ips/ips.controller';
 import { ReportsController } from '../../src/reports/reports.controller';
 import { StatisticsController } from '../../src/statistics/statistics.controller';
 import { SecuritySyncController } from '../../src/security/security.controller';
+import { RulesController } from '../../src/rules/rules.controller';
+import { HealthController } from '../../src/health/health.controller';
+import { SettingsController } from '../../src/settings/settings.controller';
 
 export const CONTROLLERS: any[] = [
   AuthController, ApiKeysController, AuditController, BlockingController, EventsController,
   IncidentsController, IpsController, ReportsController, StatisticsController, SecuritySyncController,
+  RulesController, HealthController, SettingsController,
 ];
 
 export interface RouteInfo {

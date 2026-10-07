@@ -15,7 +15,7 @@ const ADMIN = ['SUPER_ADMIN', 'SECURITY_ADMIN'];
 
 describe('route inventory', () => {
   it('finds every route (guards against the inventory silently shrinking)', () => {
-    expect(routes.length).toBe(31);
+    expect(routes.length).toBe(44);
   });
 
   it('has no duplicated method and path, because the first registration would shadow the second', () => {
@@ -23,9 +23,10 @@ describe('route inventory', () => {
     expect(keys.filter((k, i) => keys.indexOf(k) !== i)).toEqual([]);
   });
 
-  it('protects every route except the three public authentication routes', () => {
+  it('protects every route except the public sign-in, session and health routes', () => {
     const unprotected = routes.filter((r) => !r.guards.some((g) => AUDIT_GUARD_NAMES.includes(g)));
     expect(unprotected.map((r) => r.key).sort()).toEqual([
+      'GET /api/v1/auth/csrf', 'GET /api/v1/health',
       'POST /api/v1/auth/login', 'POST /api/v1/auth/logout', 'POST /api/v1/auth/refresh',
     ]);
     expect(routes.filter((r) => r.isPublic).map((r) => r.key).sort()).toEqual(
@@ -87,6 +88,37 @@ describe('role rules', () => {
       'POST /api/v1/ips/:ip/refresh-intelligence': ANALYST_UP,
     };
     for (const [k, roles] of Object.entries(expected)) expect([k, byKey.get(k)!.roles]).toEqual([k, roles]);
+  });
+});
+
+describe('dashboard routes added in Stage 9', () => {
+  const SUPER = ['SUPER_ADMIN'];
+  it('user administration is for the super admin only', () => {
+    for (const k of ['GET /api/v1/auth/users', 'POST /api/v1/auth/users', 'PATCH /api/v1/auth/users/:id', 'POST /api/v1/auth/users/:id/reset-password']) {
+      expect([k, byKey.get(k)!.roles]).toEqual([k, SUPER]);
+    }
+  });
+  it('detection rules can be read and changed by administrators only', () => {
+    for (const k of ['GET /api/v1/rules', 'PATCH /api/v1/rules/:code', 'POST /api/v1/rules/:code/reset']) {
+      expect([k, byKey.get(k)!.roles]).toEqual([k, ADMIN]);
+    }
+  });
+  it('who-am-I is open to every signed-in role, the assignee list to administrators', () => {
+    expect(byKey.get('GET /api/v1/auth/me')!.roles).toEqual(ALL);
+    expect(byKey.get('GET /api/v1/auth/assignees')!.roles).toEqual(ADMIN);
+  });
+  it('the address list and incident notes are for analysts and above, never viewers', () => {
+    expect(byKey.get('GET /api/v1/ips')!.roles).toEqual(ANALYST_UP);
+    expect(byKey.get('POST /api/v1/incidents/:id/notes')!.roles).toEqual(ANALYST_UP);
+  });
+  it('operational settings are for administrators only', () => {
+    expect(byKey.get('GET /api/v1/settings/operational')!.roles).toEqual(ADMIN);
+  });
+  it('the only routes with no sign-in are the session routes and health', () => {
+    expect(routes.filter((r) => r.isPublic).map((r) => r.key).sort()).toEqual([
+      'GET /api/v1/auth/csrf', 'GET /api/v1/health',
+      'POST /api/v1/auth/login', 'POST /api/v1/auth/logout', 'POST /api/v1/auth/refresh',
+    ]);
   });
 });
 

@@ -53,7 +53,9 @@ export const AUDIT_ACTIONS = {
   EVENT_INGEST: 'event.ingest',
   INCIDENT_CREATE: 'incident.create', INCIDENT_UPDATE: 'incident.update', INCIDENT_ASSIGN: 'incident.assign',
   IP_BLOCK: 'ip.block', IP_UNBLOCK: 'ip.unblock', IP_ALLOW: 'ip.allow', IP_UNALLOW: 'ip.unallow',
-  RULE_UPDATE: 'rule.update', AUTO_BLOCK: 'ip.autoblock',
+  RULE_UPDATE: 'rule.update', RULE_RESET: 'rule.reset', AUTO_BLOCK: 'ip.autoblock',
+  USER_UPDATE: 'user.update', USER_PASSWORD_RESET: 'user.password_reset',
+  INCIDENT_NOTE: 'incident.note',
 } as const;
 
 export const ROLES_KEY = 'roles';

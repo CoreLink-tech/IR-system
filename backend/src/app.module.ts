@@ -15,6 +15,9 @@ import { IpsModule } from './ips/ips.module';
 import { BlockingModule } from './blocking/blocking.module';
 import { StatisticsModule } from './statistics/statistics.module';
 import { ReportsModule } from './reports/reports.module';
+import { RulesModule } from './rules/rules.module';
+import { HealthModule } from './health/health.module';
+import { SettingsModule } from './settings/settings.module';
 import { JwtOrApiKeyGuard } from './common/guards/jwt-or-api-key.guard';
 import { ApiKeyGuard } from './common/guards/api-key.guard';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -40,6 +43,9 @@ import { SecuritySyncController } from './security/security.controller';
     EventsModule,
     StatisticsModule,
     ReportsModule,
+    RulesModule,
+    HealthModule,
+    SettingsModule,
   ],
   controllers: [SecuritySyncController],
   providers: [

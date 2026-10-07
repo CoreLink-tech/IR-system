@@ -13,9 +13,13 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const status = exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
 
     let message: string | object = 'Internal server error';
+    // A short machine-readable reason, only when the code that threw the error gave one.
+    // The dashboard uses it to tell, for example, a stolen session from a plain expiry.
+    let code: string | undefined;
     if (exception instanceof HttpException) {
       const r = exception.getResponse();
       message = typeof r === 'string' ? r : (r as any).message || r;
+      if (typeof r === 'object' && typeof (r as any).code === 'string') code = (r as any).code;
     }
 
     const body = {
@@ -25,6 +29,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       method: req.method,
       requestId: req.requestId,
       timestamp: new Date().toISOString(),
+      ...(code ? { code } : {}),
     };
 
     if (status >= 500) {

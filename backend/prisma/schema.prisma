@@ -15,6 +15,9 @@ model SecurityUser {
   role          String
   isActive      Boolean   @default(true)
   lastLoginAt   DateTime?
+  // Set when an administrator resets or issues a password. The account can sign in, but
+  // every route except "who am I" and "change password" is refused until it is changed.
+  mustChangePassword Boolean @default(false)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 

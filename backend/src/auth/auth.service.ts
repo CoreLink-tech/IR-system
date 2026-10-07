@@ -17,6 +17,9 @@ type Ctx = { ip?: string; userAgent?: string; requestId?: string };
  */
 const DUMMY_HASH = bcrypt.hashSync(randomBytes(16).toString('hex'), 12);
 
+/** How long a refresh token (and the browser cookie that carries it) stays valid. */
+export const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -67,7 +70,7 @@ export class AuthService {
       { sub: user.id, nonce: refreshRaw, type: 'refresh' },
       { secret: process.env.JWT_REFRESH_SECRET, expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d' },
     );
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + REFRESH_TTL_MS);
     await this.prisma.securityRefreshToken.create({
       data: {
         userId: user.id, tokenHash: this.hashRefresh(refreshToken), expiresAt,
@@ -99,7 +102,8 @@ export class AuthService {
         action: AUDIT_ACTIONS.REFRESH, result: 'FAILURE', ipAddress: ctx.ip, userAgent: ctx.userAgent,
         metadata: { reason: 'refresh_token_reuse', sessionsRevoked: true },
       });
-      throw new UnauthorizedException('Refresh token expired or revoked');
+      // The code lets the dashboard tell the owner plainly that every session was ended.
+      throw new UnauthorizedException({ message: 'Refresh token expired or revoked', code: 'refresh_token_reuse' });
     }
     if (!stored || stored.expiresAt < new Date()) {
       throw new UnauthorizedException('Refresh token expired or revoked');
@@ -116,6 +120,22 @@ export class AuthService {
     return { user: this.publicUser(user), ...tokens };
   }
 
+  /** Throws 401 unless the value is a correctly signed, unexpired refresh token. */
+  async verifyRefreshJwt(refreshToken: string): Promise<void> {
+    try {
+      const payload: any = await this.jwt.verifyAsync(refreshToken, { secret: process.env.JWT_REFRESH_SECRET });
+      if (payload.type !== 'refresh') throw new Error('type');
+    } catch {
+      throw new UnauthorizedException({ message: 'Invalid refresh token', code: 'no_session' });
+    }
+  }
+
+  async me(userId: string) {
+    const user = await this.prisma.securityUser.findUnique({ where: { id: userId } });
+    if (!user || !user.isActive) throw new UnauthorizedException();
+    return this.publicUser(user);
+  }
+
   async logout(refreshToken: string) {
     if (!refreshToken) return;
     const hash = this.hashRefresh(refreshToken);
@@ -126,7 +146,7 @@ export class AuthService {
   }
 
   async createUser(
-    dto: { email: string; password: string; name?: string; role: string },
+    dto: { email: string; password: string; name?: string; role: string; requirePasswordChange?: boolean },
     actor?: ActorContext,
   ) {
     if (!Object.values(ROLES).includes(dto.role as any)) throw new BadRequestException('Invalid role');
@@ -135,14 +155,17 @@ export class AuthService {
     if (exists) throw new ConflictException('Email already exists');
     const passwordHash = await bcrypt.hash(dto.password, 12);
     const user = await this.prisma.securityUser.create({
-      data: { email, passwordHash, name: dto.name ?? null, role: dto.role },
+      data: {
+        email, passwordHash, name: dto.name ?? null, role: dto.role,
+        ...(dto.requirePasswordChange ? { mustChangePassword: true } : {}),
+      },
     });
     // Creating an account is one of the most sensitive things an administrator can do.
     await this.audit.log({
       requestId: actor?.requestId, actorType: actor ? 'USER' : 'SYSTEM', actorId: actor?.id,
       actorLabel: actor?.label, action: AUDIT_ACTIONS.USER_CREATE, targetType: 'user', targetId: user.id,
       result: 'SUCCESS', ipAddress: actor?.ip, userAgent: actor?.userAgent,
-      metadata: { email, role: dto.role },
+      metadata: { email, role: dto.role, requirePasswordChange: !!dto.requirePasswordChange },
     });
     return this.publicUser(user);
   }
@@ -170,7 +193,7 @@ export class AuthService {
       await fail('same_password');
       throw new BadRequestException('New password must be different from the current one');
     }
-    await this.prisma.securityUser.update({ where: { id: user.id }, data: { passwordHash: await bcrypt.hash(newPassword, 12) } });
+    await this.prisma.securityUser.update({ where: { id: user.id }, data: { passwordHash: await bcrypt.hash(newPassword, 12), mustChangePassword: false } });
     await this.prisma.securityRefreshToken.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } });
     await this.audit.log({
       requestId: ctx.requestId, actorType: 'USER', actorId: user.id, actorLabel: user.email,
@@ -180,6 +203,6 @@ export class AuthService {
   }
 
   private publicUser(user: any) {
-    return { id: user.id, email: user.email, name: user.name, role: user.role, isActive: user.isActive };
+    return { id: user.id, email: user.email, name: user.name, role: user.role, isActive: user.isActive, mustChangePassword: !!user.mustChangePassword };
   }
 }

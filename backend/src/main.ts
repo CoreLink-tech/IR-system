@@ -9,6 +9,7 @@ import { RequestIdInterceptor } from './common/interceptors/request-id.intercept
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 import { AuditService } from './audit/audit.service';
 import { assertValidConfig } from './config/validate-config';
+import { allowedOrigins } from './common/utils/origins';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -18,8 +19,12 @@ async function bootstrap() {
 
   app.use(helmet());
   app.enableCors({
-    origin: (process.env.CORS_ORIGINS || 'http://localhost:3000').split(',').map((s) => s.trim()),
+    origin: allowedOrigins(),
     credentials: true,
+    // A browser on another origin can only read these response headers if they are exposed.
+    // Without Retry-After the dashboard could never show how long to wait after a 429.
+    exposedHeaders: ['Retry-After', 'X-Request-Id'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-Request-Id'],
   });
 
   app.useGlobalPipes(new ValidationPipe({
