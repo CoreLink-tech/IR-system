@@ -1,0 +1,519 @@
+{
+  "_comment": "Source of truth for \"who is the visitor\". The server (Jest) and the PHP client (tests/unit.php) must both produce exactly \"expected\" (null means no usable address). Fields: trusted proxy list, optional client header name, the connection address, X-Forwarded-For, and the client header value. Limits: 32 entries and 2048 characters of X-Forwarded-For.",
+  "vectors": [
+    {
+      "name": "no trusted proxies: a forged header is ignored",
+      "trusted": [],
+      "header": null,
+      "remote": "203.0.113.9",
+      "xff": "1.1.1.1",
+      "clientHeader": null,
+      "expected": "203.0.113.9"
+    },
+    {
+      "name": "no trusted proxies: a private connection is not unwrapped",
+      "trusted": [],
+      "header": null,
+      "remote": "10.0.0.5",
+      "xff": "203.0.113.7",
+      "clientHeader": null,
+      "expected": "10.0.0.5"
+    },
+    {
+      "name": "trusted proxy: the forwarded visitor is used",
+      "trusted": [
+        "10.0.0.1"
+      ],
+      "header": null,
+      "remote": "10.0.0.1",
+      "xff": "203.0.113.7",
+      "clientHeader": null,
+      "expected": "203.0.113.7"
+    },
+    {
+      "name": "forged left-hand entry is ignored, rightmost untrusted wins",
+      "trusted": [
+        "10.0.0.1"
+      ],
+      "header": null,
+      "remote": "10.0.0.1",
+      "xff": "1.1.1.1, 203.0.113.7",
+      "clientHeader": null,
+      "expected": "203.0.113.7"
+    },
+    {
+      "name": "two hops are skipped",
+      "trusted": [
+        "10.0.0.1",
+        "10.0.0.2"
+      ],
+      "header": null,
+      "remote": "10.0.0.2",
+      "xff": "203.0.113.7, 10.0.0.1",
+      "clientHeader": null,
+      "expected": "203.0.113.7"
+    },
+    {
+      "name": "a chain of only trusted hops falls back to the connection",
+      "trusted": [
+        "10.0.0.1",
+        "10.0.0.2"
+      ],
+      "header": null,
+      "remote": "10.0.0.1",
+      "xff": "10.0.0.2",
+      "clientHeader": null,
+      "expected": "10.0.0.1"
+    },
+    {
+      "name": "untrusted connection: header ignored even with a list",
+      "trusted": [
+        "10.0.0.1"
+      ],
+      "header": null,
+      "remote": "198.51.100.9",
+      "xff": "1.1.1.1",
+      "clientHeader": null,
+      "expected": "198.51.100.9"
+    },
+    {
+      "name": "untrusted connection claiming to be the proxy in the header",
+      "trusted": [
+        "10.0.0.1"
+      ],
+      "header": null,
+      "remote": "198.51.100.9",
+      "xff": "10.0.0.1",
+      "clientHeader": null,
+      "expected": "198.51.100.9"
+    },
+    {
+      "name": "keyword private trusts a private connection",
+      "trusted": [
+        "private"
+      ],
+      "header": null,
+      "remote": "10.0.0.5",
+      "xff": "203.0.113.7",
+      "clientHeader": null,
+      "expected": "203.0.113.7"
+    },
+    {
+      "name": "keyword private does not trust a public connection",
+      "trusted": [
+        "private"
+      ],
+      "header": null,
+      "remote": "198.51.100.9",
+      "xff": "203.0.113.7",
+      "clientHeader": null,
+      "expected": "198.51.100.9"
+    },
+    {
+      "name": "keyword private skips private hops in the chain",
+      "trusted": [
+        "private"
+      ],
+      "header": null,
+      "remote": "10.0.0.1",
+      "xff": "203.0.113.7, 192.168.1.5",
+      "clientHeader": null,
+      "expected": "203.0.113.7"
+    },
+    {
+      "name": "keyword private with only private hops falls back",
+      "trusted": [
+        "private"
+      ],
+      "header": null,
+      "remote": "10.0.0.1",
+      "xff": "192.168.1.5, 172.16.0.9",
+      "clientHeader": null,
+      "expected": "10.0.0.1"
+    },
+    {
+      "name": "keyword private trusts IPv6 loopback",
+      "trusted": [
+        "private"
+      ],
+      "header": null,
+      "remote": "::1",
+      "xff": "203.0.113.7",
+      "clientHeader": null,
+      "expected": "203.0.113.7"
+    },
+    {
+      "name": "CIDR block trusted",
+      "trusted": [
+        "173.245.48.0/20"
+      ],
+      "header": null,
+      "remote": "173.245.50.1",
+      "xff": "203.0.113.7",
+      "clientHeader": null,
+      "expected": "203.0.113.7"
+    },
+    {
+      "name": "CIDR block boundary: just outside",
+      "trusted": [
+        "173.245.48.0/20"
+      ],
+      "header": null,
+      "remote": "173.245.64.1",
+      "xff": "203.0.113.7",
+      "clientHeader": null,
+      "expected": "173.245.64.1"
+    },
+    {
+      "name": "IPv6 CIDR trusted",
+      "trusted": [
+        "2400:cb00::/32"
+      ],
+      "header": null,
+      "remote": "2400:cb00::1",
+      "xff": "2001:db8::7",
+      "clientHeader": null,
+      "expected": "2001:db8::7"
+    },
+    {
+      "name": "IPv4 connection never matches an IPv6 block",
+      "trusted": [
+        "2400:cb00::/32"
+      ],
+      "header": null,
+      "remote": "10.0.0.1",
+      "xff": "203.0.113.7",
+      "clientHeader": null,
+      "expected": "10.0.0.1"
+    },
+    {
+      "name": "IPv6 connection never matches an IPv4 block",
+      "trusted": [
+        "10.0.0.0/8"
+      ],
+      "header": null,
+      "remote": "2001:db8::1",
+      "xff": "203.0.113.7",
+      "clientHeader": null,
+      "expected": "2001:db8::1"
+    },
+    {
+      "name": "IPv4-mapped connection address is read as IPv4",
+      "trusted": [
+        "10.0.0.1"
+      ],
+      "header": null,
+      "remote": "::ffff:10.0.0.1",
+      "xff": "203.0.113.7",
+      "clientHeader": null,
+      "expected": "203.0.113.7"
+    },
+    {
+      "name": "IPv4-mapped address in the header is read as IPv4",
+      "trusted": [
+        "10.0.0.1"
+      ],
+      "header": null,
+      "remote": "10.0.0.1",
+      "xff": "::ffff:203.0.113.7",
+      "clientHeader": null,
+      "expected": "203.0.113.7"
+    },
+    {
+      "name": "port suffix is dropped",
+      "trusted": [
+        "10.0.0.1"
+      ],
+      "header": null,
+      "remote": "10.0.0.1",
+      "xff": "203.0.113.7:5555",
+      "clientHeader": null,
+      "expected": "203.0.113.7"
+    },
+    {
+      "name": "bracketed IPv6 with port",
+      "trusted": [
+        "10.0.0.1"
+      ],
+      "header": null,
+      "remote": "10.0.0.1",
+      "xff": "[2001:db8::7]:443",
+      "clientHeader": null,
+      "expected": "2001:db8::7"
+    },
+    {
+      "name": "bare IPv6",
+      "trusted": [
+        "10.0.0.1"
+      ],
+      "header": null,
+      "remote": "10.0.0.1",
+      "xff": "2001:DB8:0:0::7",
+      "clientHeader": null,
+      "expected": "2001:db8::7"
+    },
+    {
+      "name": "whitespace around entries",
+      "trusted": [
+        "10.0.0.1"
+      ],
+      "header": null,
+      "remote": "10.0.0.1",
+      "xff": "  203.0.113.7  ",
+      "clientHeader": null,
+      "expected": "203.0.113.7"
+    },
+    {
+      "name": "malformed rightmost entry: header not relied on",
+      "trusted": [
+        "10.0.0.1"
+      ],
+      "header": null,
+      "remote": "10.0.0.1",
+      "xff": "garbage",
+      "clientHeader": null,
+      "expected": "10.0.0.1"
+    },
+    {
+      "name": "malformed entry left of the visitor is never reached",
+      "trusted": [
+        "10.0.0.1"
+      ],
+      "header": null,
+      "remote": "10.0.0.1",
+      "xff": "garbage, 203.0.113.7",
+      "clientHeader": null,
+      "expected": "203.0.113.7"
+    },
+    {
+      "name": "malformed entry behind a trusted hop: header not relied on",
+      "trusted": [
+        "10.0.0.1",
+        "10.0.0.2"
+      ],
+      "header": null,
+      "remote": "10.0.0.1",
+      "xff": "garbage, 10.0.0.2",
+      "clientHeader": null,
+      "expected": "10.0.0.1"
+    },
+    {
+      "name": "empty entry at the end",
+      "trusted": [
+        "10.0.0.1"
+      ],
+      "header": null,
+      "remote": "10.0.0.1",
+      "xff": "203.0.113.7,,",
+      "clientHeader": null,
+      "expected": "10.0.0.1"
+    },
+    {
+      "name": "empty header",
+      "trusted": [
+        "10.0.0.1"
+      ],
+      "header": null,
+      "remote": "10.0.0.1",
+      "xff": "",
+      "clientHeader": null,
+      "expected": "10.0.0.1"
+    },
+    {
+      "name": "absent header",
+      "trusted": [
+        "10.0.0.1"
+      ],
+      "header": null,
+      "remote": "10.0.0.1",
+      "xff": null,
+      "clientHeader": null,
+      "expected": "10.0.0.1"
+    },
+    {
+      "name": "control characters injected into an entry",
+      "trusted": [
+        "10.0.0.1"
+      ],
+      "header": null,
+      "remote": "10.0.0.1",
+      "xff": "203.0.113.7\r\nX-Evil: 1",
+      "clientHeader": null,
+      "expected": "10.0.0.1"
+    },
+    {
+      "name": "zone identifier is rejected",
+      "trusted": [
+        "10.0.0.1"
+      ],
+      "header": null,
+      "remote": "10.0.0.1",
+      "xff": "fe80::1%eth0",
+      "clientHeader": null,
+      "expected": "10.0.0.1"
+    },
+    {
+      "name": "shorthand dotted address is rejected",
+      "trusted": [
+        "10.0.0.1"
+      ],
+      "header": null,
+      "remote": "10.0.0.1",
+      "xff": "127.1",
+      "clientHeader": null,
+      "expected": "10.0.0.1"
+    },
+    {
+      "name": "hexadecimal address is rejected",
+      "trusted": [
+        "10.0.0.1"
+      ],
+      "header": null,
+      "remote": "10.0.0.1",
+      "xff": "0x7f.0.0.1",
+      "clientHeader": null,
+      "expected": "10.0.0.1"
+    },
+    {
+      "name": "duplicate entries",
+      "trusted": [
+        "10.0.0.1"
+      ],
+      "header": null,
+      "remote": "10.0.0.1",
+      "xff": "203.0.113.7, 203.0.113.7",
+      "clientHeader": null,
+      "expected": "203.0.113.7"
+    },
+    {
+      "name": "exactly 32 entries are read",
+      "trusted": [
+        "10.0.0.1"
+      ],
+      "header": null,
+      "remote": "10.0.0.1",
+      "xff": "198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1",
+      "clientHeader": null,
+      "expected": "198.51.100.1"
+    },
+    {
+      "name": "33 entries: header not relied on",
+      "trusted": [
+        "10.0.0.1"
+      ],
+      "header": null,
+      "remote": "10.0.0.1",
+      "xff": "198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1, 198.51.100.1",
+      "clientHeader": null,
+      "expected": "10.0.0.1"
+    },
+    {
+      "name": "over-long header: not relied on",
+      "trusted": [
+        "10.0.0.1"
+      ],
+      "header": null,
+      "remote": "10.0.0.1",
+      "xff": "203.0.113.7                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    ",
+      "clientHeader": null,
+      "expected": "10.0.0.1"
+    },
+    {
+      "name": "unparseable connection address",
+      "trusted": [
+        "10.0.0.1"
+      ],
+      "header": null,
+      "remote": "not-an-ip",
+      "xff": "203.0.113.7",
+      "clientHeader": null,
+      "expected": null
+    },
+    {
+      "name": "absent connection address",
+      "trusted": [
+        "10.0.0.1"
+      ],
+      "header": null,
+      "remote": null,
+      "xff": "203.0.113.7",
+      "clientHeader": null,
+      "expected": null
+    },
+    {
+      "name": "invalid trusted entry is ignored (prefix too long)",
+      "trusted": [
+        "10.0.0.0/99"
+      ],
+      "header": null,
+      "remote": "10.0.0.1",
+      "xff": "203.0.113.7",
+      "clientHeader": null,
+      "expected": "10.0.0.1"
+    },
+    {
+      "name": "invalid trusted entry is ignored (garbage)",
+      "trusted": [
+        "banana"
+      ],
+      "header": null,
+      "remote": "10.0.0.1",
+      "xff": "203.0.113.7",
+      "clientHeader": null,
+      "expected": "10.0.0.1"
+    },
+    {
+      "name": "single-address entry does not match a neighbour",
+      "trusted": [
+        "10.0.0.1"
+      ],
+      "header": null,
+      "remote": "10.0.0.11",
+      "xff": "203.0.113.7",
+      "clientHeader": null,
+      "expected": "10.0.0.11"
+    },
+    {
+      "name": "client header is used when the connection is trusted",
+      "trusted": [
+        "173.245.48.0/20"
+      ],
+      "header": "CF-Connecting-IP",
+      "remote": "173.245.50.1",
+      "xff": "8.8.8.8",
+      "clientHeader": "203.0.113.7",
+      "expected": "203.0.113.7"
+    },
+    {
+      "name": "client header is ignored when the connection is not trusted",
+      "trusted": [
+        "173.245.48.0/20"
+      ],
+      "header": "CF-Connecting-IP",
+      "remote": "198.51.100.9",
+      "xff": "8.8.8.8",
+      "clientHeader": "203.0.113.7",
+      "expected": "198.51.100.9"
+    },
+    {
+      "name": "malformed client header falls back to the forwarding chain",
+      "trusted": [
+        "173.245.48.0/20"
+      ],
+      "header": "CF-Connecting-IP",
+      "remote": "173.245.50.1",
+      "xff": "203.0.113.9",
+      "clientHeader": "bad",
+      "expected": "203.0.113.9"
+    },
+    {
+      "name": "client header set but no trusted proxies: ignored",
+      "trusted": [],
+      "header": "CF-Connecting-IP",
+      "remote": "198.51.100.9",
+      "xff": null,
+      "clientHeader": "203.0.113.7",
+      "expected": "198.51.100.9"
+    }
+  ]
+}

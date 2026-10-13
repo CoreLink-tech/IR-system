@@ -10,6 +10,7 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 import { AuditService } from './audit/audit.service';
 import { assertValidConfig } from './config/validate-config';
 import { allowedOrigins } from './common/utils/origins';
+import { configureApp } from './common/configure-app';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -17,6 +18,7 @@ async function bootstrap() {
   assertValidConfig().forEach((w) => logger.warn(w));
   const app = await NestFactory.create(AppModule, { bufferLogs: false });
 
+  configureApp(app);
   app.use(helmet());
   app.enableCors({
     origin: allowedOrigins(),

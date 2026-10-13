@@ -44,6 +44,8 @@ Copy backend/.env.example to backend/.env and fill in:
 - API_KEY_HASH_PEPPER   Random pepper for API key hashing
 - BOOTSTRAP_ADMIN_*     Used once by npm run seed
 - CORS_ORIGINS          The dashboard's exact origin(s), comma separated
+- TRUSTED_PROXIES       Reverse proxies whose X-Forwarded-For is believed: addresses, CIDR blocks, or `private`. Empty by default (headers ignored)
+- CLIENT_IP_HEADER      Optional header the proxy sets to the client address, for example CF-Connecting-IP
 - COOKIE_SECURE         Optional. The browser refresh cookie is Secure in production by default
 
 Generate secrets:

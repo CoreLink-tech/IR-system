@@ -3,7 +3,7 @@
 ## Running the tests
 
     cd backend
-    npm test            # 640 unit and HTTP-level tests
+    npm test            # 715 unit and HTTP-level tests
     npm run test:cov    # same, plus coverage; fails if coverage drops below the floors
     npm run test:php    # the PHP library tests, three files (needs php with the curl extension)
     npm run test:all    # both
@@ -21,7 +21,8 @@
 | Reports | All wording, honesty rules, posture, scoped incidents, the HTTP endpoints |
 | IP intelligence | Each provider, merging, caching, failure handling |
 | Configuration | Startup refusal of placeholder and weak secrets |
-| PHP library | Visitor address and trusted proxies, blocklist cache, circuit breaker, event queue and replay, redaction, guard modes, configuration, PHP 7.4 syntax check, end-to-end through a fake API (198 checks) |
+| PHP library | Visitor address and trusted proxies, blocklist cache, circuit breaker, event queue and replay, redaction, guard modes, configuration, PHP 7.4 syntax check, end-to-end through a fake API (211 checks) |
+| Client addresses | `test/client-ip.spec.ts`: 47 shared forwarding cases, spoofing from untrusted and trusted peers, multi-hop, duplicate headers, and HTTP-level proof that a forged X-Forwarded-For does not change the rate limit bucket, the audit record or the login record |
 | Address parsing | One shared file of 95 cases, run by both the server tests and the PHP tests, so both sides agree on what an address means |
 
 | Dashboard backend (Stage 9) | Cookie session flow over HTTP with the real auth service, CSRF and origin checks, user administration safeguards (self-change, last super admin, forced password change), rule limits and audit, address list filters, incident notes, health and settings (no secrets), the exported role matrix staying in sync with the route decorators |

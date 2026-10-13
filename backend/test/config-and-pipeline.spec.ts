@@ -13,6 +13,7 @@ const good = {
   JWT_REFRESH_SECRET: 'z'.repeat(20) + 'Y'.repeat(20) + '9'.repeat(24),
   API_KEY_HASH_PEPPER: 'p3pp3r-value-0123456789',
   CORS_ORIGINS: 'https://security.pishonmarket.com',
+  TRUSTED_PROXIES: 'private',
 } as any;
 
 describe('startup configuration check', () => {
@@ -62,6 +63,13 @@ describe('startup configuration check', () => {
     const { errors, warnings } = validateConfig({ ...good, CORS_ORIGINS: 'http://localhost:3000', AUTO_BLOCK_ENABLED: 'false' });
     expect(errors).toEqual([]);
     expect(warnings).toHaveLength(2);
+  });
+
+  it('warns in production when no trusted proxies are listed', () => {
+    const { errors, warnings } = validateConfig({ ...good, TRUSTED_PROXIES: '' });
+    expect(errors).toEqual([]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('TRUSTED_PROXIES');
   });
 });
 

@@ -21,6 +21,10 @@ namespace App\Security;
  */
 final class ClientIp
 {
+    /** Longest X-Forwarded-For value, and most entries, that are read. Anything beyond is treated as unreliable. */
+    public const MAX_FORWARDED_LENGTH = 2048;
+    public const MAX_FORWARDED_ENTRIES = 32;
+
     /** @var string[] */
     private $trusted;
     /** @var string|null Header holding the client address, for example "CF-Connecting-IP". */
@@ -53,7 +57,11 @@ final class ClientIp
             }
         }
 
-        $chain = self::parseList($server['HTTP_X_FORWARDED_FOR'] ?? null);
+        $raw = $server['HTTP_X_FORWARDED_FOR'] ?? null;
+        if (is_string($raw) && (strlen($raw) > self::MAX_FORWARDED_LENGTH || substr_count($raw, ',') + 1 > self::MAX_FORWARDED_ENTRIES)) {
+            return $remote;
+        }
+        $chain = self::parseList($raw);
         for ($i = count($chain) - 1; $i >= 0; $i--) {
             if ($chain[$i] === null) {
                 // A malformed entry means the header cannot be relied on.

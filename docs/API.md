@@ -188,8 +188,10 @@ POST   /api/v1/rules/:code/reset      body: { reason? } puts every setting back 
 `csrf_invalid`, `origin_not_allowed`, `password_change_required`, `self_change_forbidden`,
 `self_reset_forbidden`, `last_super_admin`.
 
-Errors raised by a guard before the request is handled (401 and 403 from authentication or role
-checks) carry no `requestId`.
+Every response, including errors raised by a guard (401, 403) and rate limit refusals (429), carries
+a `requestId` in the body and in the `X-Request-Id` response header. A caller may supply its own
+`X-Request-Id`; it is kept only if it is 8 to 64 characters of letters, digits and `. _ : -`, and is
+replaced by a generated id otherwise, so it cannot forge or break a log line.
 
 ## CORS
 `CORS_ORIGINS` is the exact list of dashboard origins. Credentials are allowed. The browser may

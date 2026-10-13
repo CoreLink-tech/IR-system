@@ -1,5 +1,6 @@
 import { ExecutionContext, Injectable } from '@nestjs/common';
 import { ThrottlerGuard, ThrottlerLimitDetail, ThrottlerRequest } from '@nestjs/throttler';
+import { extractIp } from '../utils/ip.util';
 
 /**
  * Rate limiting with two separate budgets.
@@ -39,7 +40,9 @@ export class AppThrottlerGuard extends ThrottlerGuard {
   protected async getTracker(req: Record<string, any>): Promise<string> {
     const token = apiKeyToken(req);
     // The leading part of a key is its public lookup prefix, not the secret.
-    return token !== null ? `key:${token.slice(0, 24)}` : super.getTracker(req);
+    // Anonymous and administrator traffic is counted per client address, taken by the one
+    // shared function so a forged X-Forwarded-For from an untrusted caller changes nothing.
+    return token !== null ? `key:${token.slice(0, 24)}` : `ip:${extractIp(req as any) ?? req.socket?.remoteAddress ?? 'unknown'}`;
   }
 }
 

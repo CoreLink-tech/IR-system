@@ -2,8 +2,8 @@
 
 ## Threat Model
 - Pishon server is trusted to send events with valid API key.
-- Attackers may control X-Forwarded-For. Put a reverse proxy in front in production.
-  (Trusting only a known proxy is tracked for Stage 10.)
+- Attackers may control X-Forwarded-For and X-Real-IP. The API ignores both unless the
+  connection comes from a proxy listed in `TRUSTED_PROXIES` (see "Client addresses" below).
 - Addresses are parsed strictly: shorthand, hexadecimal and octal forms such as
   `127.1` or `010.0.0.1` are rejected rather than read as a different address.
 - Loopback, private and link-local addresses can never be blocked, so the website
@@ -28,6 +28,27 @@ refresh secrets are equal. The sample file ships a public placeholder; without t
 check, copying it unchanged would let anyone forge an administrator login. Generate
 real values with `npm run gen:secrets`. `CORS_ORIGINS` may not be `*`. Seeding
 production requires an explicit `BOOTSTRAP_ADMIN_PASSWORD`.
+
+## Client addresses
+One function (`extractIp` in `backend/src/common/utils/ip.util.ts`) decides who a caller is. The
+rate limit tracker, audit records, login records and event ingestion all use it, and Express's
+`trust proxy` setting is derived from the same rule (`configureApp`).
+
+- `TRUSTED_PROXIES` lists the reverse proxies whose headers are believed: addresses, CIDR blocks, or
+  the word `private`. The default is empty, which means forwarding headers are ignored and the
+  connection address is used. An invalid entry stops the server from starting.
+- Behind a trusted proxy, `X-Forwarded-For` is read from the right, skipping trusted hops. The first
+  address that is not a trusted proxy is the caller. Entries on the left are whatever the caller
+  claimed and are never reached.
+- A malformed or empty entry, a header longer than 2048 characters or one with more than 32 entries
+  means the header cannot be relied on, and the connection address is used.
+- `CLIENT_IP_HEADER` (for example `CF-Connecting-IP`) may name a header the proxy sets. It is used only
+  behind a trusted proxy and falls back to the forwarding chain if it is malformed.
+- `X-Real-IP` is never read.
+- The PHP library follows the same rules. Both sides run `integration/shared/forwarding-vectors.json`
+  (47 cases), so they cannot drift apart.
+- If the API runs behind a proxy and `TRUSTED_PROXIES` is empty, every caller looks like the proxy and
+  shares one rate limit. Startup prints a warning in production for this case.
 
 ## Rate limiting
 Counted per route. Administrators and anonymous callers per address, sign-in and token

@@ -92,6 +92,23 @@ check(count($cases) . ' CIDR cases', $bad === [], implode('; ', $bad));
 
 // ---------------------------------------------------------------- client address
 section('ClientIp: who is the visitor?');
+$fwd = json_decode((string) file_get_contents(__DIR__ . '/../../shared/forwarding-vectors.json'), true)['vectors'];
+$badFwd = [];
+foreach ($fwd as $v) {
+    $server = ['REMOTE_ADDR' => $v['remote']];
+    if ($v['xff'] !== null) {
+        $server['HTTP_X_FORWARDED_FOR'] = $v['xff'];
+    }
+    if ($v['header'] !== null && $v['clientHeader'] !== null) {
+        $server['HTTP_' . strtoupper(str_replace('-', '_', $v['header']))] = $v['clientHeader'];
+    }
+    $got = (new ClientIp($v['trusted'], $v['header']))->resolve($server);
+    if ($got !== $v['expected']) {
+        $badFwd[] = $v['name'] . ' => ' . show($got);
+    }
+}
+check(count($fwd) . ' forwarding vectors all agree with the server', $badFwd === [], implode('; ', $badFwd));
+
 $srv = function (string $remote, ?string $xff = null, array $extra = []): array {
     $s = ['REMOTE_ADDR' => $remote] + $extra;
     if ($xff !== null) { $s['HTTP_X_FORWARDED_FOR'] = $xff; }

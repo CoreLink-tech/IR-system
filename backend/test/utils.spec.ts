@@ -85,13 +85,19 @@ describe('IP utilities', () => {
     expect(isInternalAddress('junk')).toBe(false);
   });
 
-  it('extracts the client address from forwarding headers, then the socket', () => {
+  it('takes the address from the connection, and from forwarding headers only behind a trusted proxy', () => {
     const req = (headers: any, remote?: string): any => ({ headers, socket: { remoteAddress: remote } });
-    expect(extractIp(req({ 'x-forwarded-for': '203.0.113.5, 10.0.0.1' }))).toBe('203.0.113.5');
-    expect(extractIp(req({ 'x-real-ip': '203.0.113.6' }))).toBe('203.0.113.6');
+    // No trusted proxies: forwarding headers are ignored (they can be forged by anyone).
+    expect(extractIp(req({ 'x-forwarded-for': '203.0.113.5, 10.0.0.1' }, '198.51.100.1'))).toBe('198.51.100.1');
+    expect(extractIp(req({ 'x-real-ip': '203.0.113.6' }, '198.51.100.2'))).toBe('198.51.100.2');
     expect(extractIp(req({}, '::ffff:203.0.113.7'))).toBe('203.0.113.7');
     expect(extractIp(req({ 'x-forwarded-for': 'garbage' }, '203.0.113.8'))).toBe('203.0.113.8');
     expect(extractIp(req({}, undefined))).toBeUndefined();
+    // Behind a trusted proxy the rightmost untrusted address is the visitor.
+    process.env.TRUSTED_PROXIES = '10.0.0.1';
+    try {
+      expect(extractIp(req({ 'x-forwarded-for': '9.9.9.9, 203.0.113.5' }, '10.0.0.1'))).toBe('203.0.113.5');
+    } finally { delete process.env.TRUSTED_PROXIES; }
   });
 });
 
@@ -182,9 +188,9 @@ describe('RequestIdInterceptor', () => {
     return { req, res };
   };
   it('keeps a caller supplied request id and echoes it back', () => {
-    const { req, res } = run({ 'x-request-id': 'abc-123' });
-    expect(req.requestId).toBe('abc-123');
-    expect(res.headers['X-Request-Id']).toBe('abc-123');
+    const { req, res } = run({ 'x-request-id': 'abc-12345' });
+    expect(req.requestId).toBe('abc-12345');
+    expect(res.headers['X-Request-Id']).toBe('abc-12345');
   });
   it('generates an id when none is supplied', () => {
     const { req, res } = run({});

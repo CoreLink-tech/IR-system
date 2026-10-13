@@ -75,9 +75,14 @@ describe('Controllers (real validation and role checks, services stubbed)', () =
 
   describe('authentication routes', () => {
     it('login is open and passes the address, agent and request id along', async () => {
+      // The test client connects from the local machine; with no trusted proxies listed, a
+      // forwarding header from it is ignored, so the connection address is what is recorded.
       await http().post('/api/v1/auth/login').set('User-Agent', 'jest').set('X-Forwarded-For', '203.0.113.9')
         .send({ email: 'a@pishon.ng', password: 'long-enough-1' }).expect(201);
-      expect(auth.login).toHaveBeenCalledWith('a@pishon.ng', 'long-enough-1', expect.objectContaining({ ip: '203.0.113.9', userAgent: 'jest' }));
+      const ctx = (auth.login as jest.Mock).mock.calls.at(-1)![2];
+      expect(ctx.userAgent).toBe('jest');
+      expect(['127.0.0.1', '::1']).toContain(ctx.ip);
+      expect(ctx.ip).not.toBe('203.0.113.9');
     });
     it('validates login input', async () => {
       await http().post('/api/v1/auth/login').send({ email: 'not-an-email', password: 'long-enough-1' }).expect(400);

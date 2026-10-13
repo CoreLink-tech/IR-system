@@ -7,6 +7,7 @@
  * administrator. Copying the sample file without editing it must therefore fail
  * loudly instead of producing a server that looks fine and is wide open.
  */
+import { parseTrustedProxies, trustedProxyProblems } from '../common/utils/ip.util';
 export interface ConfigReport {
   errors: string[];
   warnings: string[];
@@ -54,7 +55,16 @@ export function validateConfig(env: NodeJS.ProcessEnv = process.env): ConfigRepo
     errors.push('CORS_ORIGINS must not be "*" because the API uses credentials. List the dashboard origins explicitly.');
   }
 
+  const trusted = parseTrustedProxies(env.TRUSTED_PROXIES);
+  trustedProxyProblems(trusted).forEach((m) => errors.push(m));
+  if ((env.CLIENT_IP_HEADER ?? '').trim() && trusted.length === 0) {
+    warnings.push('CLIENT_IP_HEADER is set but TRUSTED_PROXIES is empty, so the header is ignored.');
+  }
+
   if (env.NODE_ENV === 'production') {
+    if (trusted.length === 0) {
+      warnings.push('TRUSTED_PROXIES is empty. If the API sits behind a reverse proxy, every caller will look like the proxy address and share one rate limit. List the proxy address, or "private".');
+    }
     if (origins.some((o) => /localhost|127\.0\.0\.1/.test(o))) {
       warnings.push('CORS_ORIGINS includes a localhost address in production.');
     }
