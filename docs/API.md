@@ -8,17 +8,55 @@ All requests JSON. All responses include X-Request-Id.
 Admin (JWT): Authorization: Bearer <accessToken> from POST /api/v1/auth/login.
 API Key (Pishon): Authorization: Bearer PMS_xxx. Scopes enforced per endpoint.
 
+Two ways to hold the long-lived refresh token:
+
+- **Non-browser clients** (scripts, the PHP library): the token is in the response body and
+  is sent back in the body of refresh and logout. Unchanged since Stage 1.
+- **Browsers** (the dashboard): send `"useCookie": true` on login. The refresh token is then
+  set in an `httpOnly`, `SameSite=Strict` cookie named `pishon_rt`, scoped to `/api/v1/auth`
+  (`Secure` in production), and is left out of the response body. Refresh and logout then
+  read the cookie, and must carry `Origin` (exactly one of `CORS_ORIGINS`) and an
+  `X-CSRF-Token` header. See "Cookie sessions" below.
+
 ## Endpoints
 
 ### POST /api/v1/auth/login
-Body: { "email": "...", "password": "..." }
-Returns { user, accessToken, refreshToken }.
+Body: { "email": "...", "password": "...", "useCookie": true? }
+Returns { user, accessToken, refreshToken } (body mode), or { user, accessToken, csrfToken }
+and a `Set-Cookie` (cookie mode). `user` is { id, email, name, role, isActive, mustChangePassword }.
 
 ### POST /api/v1/auth/refresh
-Body: { "refreshToken": "..." }
+Body: { "refreshToken": "..." } for body mode. With no body token the cookie is used (cookie
+mode: needs `Origin` and `X-CSRF-Token`). Refresh tokens rotate; the answer carries the new
+token (body or cookie) and, in cookie mode, a new `csrfToken`. Re-using an old token ends
+all of that user's sessions and answers 401 with `code: "refresh_token_reuse"`.
 
 ### POST /api/v1/auth/logout
-Body: { "refreshToken": "..." }
+Body: { "refreshToken": "..." } or the cookie (same checks as refresh). Clears the cookie.
+
+### GET /api/v1/auth/csrf — public, needs the cookie
+Returns { csrfToken } for the cookie's refresh token. Another website cannot read this answer
+(CORS), so it cannot forge a refresh. A page that has just reloaded holds only the cookie, so
+it asks here first. 401 `no_session` if there is no valid cookie.
+
+### Cookie sessions: the checks
+1. `SameSite=Strict`: the browser does not send the cookie from another site.
+2. `Origin` must match an entry of `CORS_ORIGINS` exactly (no wildcard, prefix or suffix match).
+3. `X-CSRF-Token` must equal the token derived from the refresh token (HMAC with
+   `JWT_REFRESH_SECRET`). It changes whenever the refresh token rotates.
+Failures answer 403 with `code: "origin_not_allowed"` or `"csrf_invalid"` and consume nothing.
+
+### GET /api/v1/auth/me — JWT (any role)
+The signed-in account: { id, email, name, role, isActive, mustChangePassword }.
+
+### GET /api/v1/health — public
+{ status: "ok", service, version, time }. No database call and no secrets. A readiness check that
+tests the database is Stage 10.
+
+### GET /api/v1/settings/operational — JWT (SUPER_ADMIN, SECURITY_ADMIN)
+Read-only operational facts: version, intelligence providers, auto-block settings, rate limits,
+risk-level thresholds, token lifetimes and whether the cookie is `Secure`. Never a secret, key,
+connection string or origin.
 
 ### POST /api/v1/events — API key, scope events:write
 Body fields: event_type, severity, ip_address, user_id, session_id,
@@ -36,16 +74,32 @@ Query: page, pageSize, sortBy, sortOrder, eventType, severity, ipAddress, userId
 ### GET /api/v1/events/:id — JWT
 
 ### GET /api/v1/incidents — JWT
-Query: page, pageSize, sortBy, sortOrder, status, severity, sourceIp, assignedTo.
+Query: page, pageSize, sortBy, sortOrder, status, severity, sourceIp, assignedTo, search.
+`search` matches the start of an address or of the public number (INC-...); only characters that
+can occur in either are used. Sortable: createdAt, updatedAt, riskScore and the other plain columns.
+Note `severity` sorts alphabetically, not by seriousness; sort by `riskScore` for that.
+Each row carries `assignee`: { id, email, name } or null.
 
 ### GET /api/v1/incidents/:id — JWT
-Returns incident + timeline + related events.
+`:id` is the internal id or the public number (INC-...), as the report routes already accepted.
+Returns incident + `assignee` + timeline + related events (the 200 most recent; omitted for viewers).
+
+### POST /api/v1/incidents/:id/notes — JWT (SUPER_ADMIN, SECURITY_ADMIN, ANALYST)
+Body: { "note": "1 to 2000 characters" }. Adds a `note.added` entry to the timeline and changes
+nothing else (not the status, assignee or last-updated time). Audited; the audit entry records the
+length of the note, not its text.
 
 ### POST /api/v1/incidents/:id/status — JWT (SECURITY_ADMIN, ANALYST)
 Body: { "status": "INVESTIGATING", "notes": "..." }
 
 ### POST /api/v1/incidents/:id/assign — JWT (SECURITY_ADMIN)
 Body: { "assignedTo": "<userId>" }
+
+### GET /api/v1/ips — JWT (SUPER_ADMIN, SECURITY_ADMIN, ANALYST)
+Query: page, pageSize, sortBy (lastSeenAt, firstSeenAt, riskScore, eventCount, failedLogins,
+ipAddress), sortOrder, riskLevel, blocked (true or false), country, search. `search` matches the
+start of an address and strips anything that cannot be part of one. Each row is the address record
+plus `blocked`: true while an active block is in force (the same test the website uses).
 
 ### GET /api/v1/ips/:ip — JWT
 
@@ -81,8 +135,41 @@ POST   /api/v1/api-keys           returns raw key ONCE
 POST   /api/v1/api-keys/:id/rotate
 DELETE /api/v1/api-keys/:id       revoke
 
+A revoke (DELETE) answers { id, name, isActive, revokedAt } only. The stored hash never leaves the server.
+
 ### Users — JWT (SUPER_ADMIN)
-POST /api/v1/auth/users
+POST   /api/v1/auth/users                       body: email, password (12+), name?, role, requirePasswordChange?
+GET    /api/v1/auth/users                       { data: [ { id, email, name, role, isActive, mustChangePassword, lastLoginAt, createdAt } ] }
+PATCH  /api/v1/auth/users/:id                   body: { role?, isActive? }
+POST   /api/v1/auth/users/:id/reset-password    body: { newPassword } (12 to 128). Returns { ok: true }.
+GET    /api/v1/auth/assignees                   (SUPER_ADMIN, SECURITY_ADMIN) { data: [ { id, email, name, role } ] }, active accounts, for assigning incidents
+
+Safeguards, enforced by the server (not only the dashboard):
+- Nobody changes their own role or deactivates themselves (400, `self_change_forbidden`), and
+  cannot reset their own password this way (400, `self_reset_forbidden`; use change-password).
+- The last active super admin cannot be demoted or deactivated (409, `last_super_admin`). The
+  check and the change run in one serializable transaction, so two super admins demoting each
+  other at the same moment cannot both succeed.
+- Deactivating an account, or resetting its password, revokes all of its refresh tokens. A role
+  change or deactivation applies to the very next request, because roles are read from the database.
+- A reset sets `mustChangePassword`. Until the person changes it, the server answers 403
+  `password_change_required` to every route except `GET auth/me` and `POST auth/change-password`.
+  Accounts created with `requirePasswordChange: true` are treated the same way.
+- Every change is audited (`user.update` with old and new values, `user.password_reset`), including refusals.
+
+### Detection rules — JWT (SUPER_ADMIN, SECURITY_ADMIN)
+GET    /api/v1/rules                  { data: [ { code, title, name, description, whyItMatters, isEnabled, priority, config, defaultConfig, isDefault, limits, updatedAt } ] }
+PATCH  /api/v1/rules/:code            body: { isEnabled?, config? (only the settings to change), reason? }
+POST   /api/v1/rules/:code/reset      body: { reason? } puts every setting back to its default; on or off is untouched
+
+- Every setting has a range (`limits`, whole numbers) and some pairs must stay in order (for example
+  the risk added per attempt cannot exceed the maximum risk). Out-of-range, fractional, unknown
+  settings and anything with a prototype-style name are refused with a list of problems (400).
+- `windowMinutes` is shown but cannot be changed: the detector always counts the last 10 minutes,
+  so editing it would change only the wording of reasons.
+- The full set of settings is always stored, so a partial change never leaves a setting undefined.
+- Changes apply to the next event. Each change is audited with the old and new values and the
+  optional reason (`rule.update`, `rule.reset`); nothing is written or audited if nothing changed.
 
 ## Error format
 
@@ -92,8 +179,23 @@ POST /api/v1/auth/users
       "path": "/api/v1/events",
       "method": "POST",
       "requestId": "...",
-      "timestamp": "2025-01-01T12:00:00.000Z"
+      "timestamp": "2025-01-01T12:00:00.000Z",
+      "code": "..."            (only when there is a specific reason)
     }
+
+`message` is a string, or an array of strings for validation errors. `code` values:
+`refresh_token_reuse` (a used refresh token was presented: all sessions ended), `no_session`,
+`csrf_invalid`, `origin_not_allowed`, `password_change_required`, `self_change_forbidden`,
+`self_reset_forbidden`, `last_super_admin`.
+
+Errors raised by a guard before the request is handled (401 and 403 from authentication or role
+checks) carry no `requestId`.
+
+## CORS
+`CORS_ORIGINS` is the exact list of dashboard origins. Credentials are allowed. The browser may
+read the response headers `Retry-After` and `X-Request-Id` (they are exposed, so a dashboard on
+another origin can show how long to wait after a 429), and may send `Authorization`,
+`Content-Type`, `X-CSRF-Token` and `X-Request-Id`.
 
 ## Rate limits
 

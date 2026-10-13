@@ -52,9 +52,11 @@ export class ApiKeysService {
   async revoke(id: string) {
     const key = await this.prisma.securityApiKey.findUnique({ where: { id } });
     if (!key) throw new NotFoundException('API key not found');
-    return this.prisma.securityApiKey.update({
+    const revoked = await this.prisma.securityApiKey.update({
       where: { id }, data: { isActive: false, revokedAt: new Date() },
     });
+    // Only what the dashboard needs. The stored hash of the key never leaves the server.
+    return { id: revoked.id, name: revoked.name, isActive: revoked.isActive, revokedAt: revoked.revokedAt };
   }
 
   async rotate(id: string) {

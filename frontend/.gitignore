@@ -1,0 +1,10 @@
+node_modules
+dist
+coverage
+.env
+.env.*
+!.env.example
+e2e/.accounts.json
+playwright-report
+test-results
+*.log

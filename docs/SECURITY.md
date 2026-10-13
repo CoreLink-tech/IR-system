@@ -50,6 +50,38 @@ in the database, and an event sent twice with the same `event_id` is stored once
 - Roles are read from the database on every request, so a role change or a disabled
   account takes effect immediately, not when the token expires.
 
+## Browser sessions (the dashboard)
+- The short-lived access token lives only in the dashboard's memory. It is never written to
+  storage, a cookie or a URL.
+- The refresh token never reaches JavaScript. It is an `httpOnly`, `Secure` (in production),
+  `SameSite=Strict` cookie scoped to `/api/v1/auth`, so ordinary API calls do not carry it and an
+  injected script cannot read it. The cost: a script running in the page can still *use* the
+  session while the page is open (call the API as the user), which is why the CSP below matters.
+- Refresh and logout from the cookie are protected against cross-site requests three ways
+  (SameSite, an exact `Origin` check, and an `X-CSRF-Token` bound to the refresh token).
+- Rotating refresh tokens plus theft detection make two tabs refreshing at once look like theft,
+  so the dashboard serialises refreshes across tabs with a Web Lock and shares the new token
+  through a BroadcastChannel. Signing out, or a detected reuse, in one tab ends all tabs.
+- The dashboard signs out after a period of inactivity (default 30 minutes, `idleTimeoutMinutes`
+  in its `config.json`), and returns the person to the page they were on, accepting only a
+  same-site path (no open redirect).
+- The cookie must be same-site with the API (for example `dashboard.example.com` and
+  `api.example.com`), because `SameSite=Strict` cookies are not sent for a different site.
+- Known limit: access tokens are not revoked one by one. The server re-reads the account on every
+  request, so deactivating an account or changing its role takes effect at once, and an admin
+  password reset leaves old access tokens able to do nothing but change the password (the
+  `mustChangePassword` check). But a password change by the person themselves revokes refresh tokens
+  only: an access token already issued keeps working until it expires (15 minutes by default).
+
+## Dashboard hosting
+`frontend/deploy/nginx.conf.example` and `security-headers.conf` set a strict Content-Security-Policy
+(`default-src 'none'`; scripts, styles, images and fonts only from the site; `connect-src` only the
+API; no inline script, no eval; `frame-ancestors 'none'`), `X-Content-Type-Options`, `X-Frame-Options`,
+`Referrer-Policy: no-referrer`, a restrictive `Permissions-Policy`, `Cross-Origin-Opener-Policy`,
+`Cross-Origin-Resource-Policy` and HSTS. Nothing loads from another site: fonts and icons are local.
+All server text is rendered as text (no `dangerouslySetInnerHTML`, enforced by a test). A test also
+fails if the dashboard compares role names itself instead of using the generated route matrix.
+
 ## Access control
 Every route's protection is checked by `test/route-policy.spec.ts`, which reads the
 decorators and fails if a route becomes unprotected or a sensitive route opens to a
@@ -105,6 +137,9 @@ ThrottlerModule global bucket. Tune with THROTTLE_TTL and THROTTLE_LIMIT.
     POST /api/v1/security/allow        SUPER_ADMIN, SECURITY_ADMIN
     API key management                 SUPER_ADMIN, SECURITY_ADMIN
     User management                    SUPER_ADMIN
+    Detection rules (read, change)     SUPER_ADMIN, SECURITY_ADMIN
+    Operational settings (read)        SUPER_ADMIN, SECURITY_ADMIN
+    Address list, incident notes       SUPER_ADMIN, SECURITY_ADMIN, ANALYST
     Read events/incidents              all 4 roles
     Update incidents                   SUPER_ADMIN, SECURITY_ADMIN, ANALYST
 
@@ -112,7 +147,10 @@ ThrottlerModule global bucket. Tune with THROTTLE_TTL and THROTTLE_LIMIT.
 - Reverse proxy (nginx/Caddy) terminating HTTPS
 - NODE_ENV=production
 - Strong JWT_SECRET, JWT_REFRESH_SECRET, API_KEY_HASH_PEPPER (64+ bytes)
-- CORS_ORIGINS restricted
+- CORS_ORIGINS restricted to the dashboard's exact origin(s)
+- COOKIE_SECURE left at its default (on in production); the dashboard served over HTTPS and
+  same-site with the API
+- Dashboard served with the headers in frontend/deploy/security-headers.conf
 - DB user privileges on pishon_market.security_* tables
 - Logs shipped off-host
 - Backups of security_* scheduled

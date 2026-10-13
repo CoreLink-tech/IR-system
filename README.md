@@ -23,6 +23,17 @@ Production-oriented incident response backend for Pishon Market.
     npm run seed
     npm run start:dev
 
+## Dashboard
+
+A web dashboard lives in `frontend/` (React, built to static files). It shows the executive summary and
+plain-English incident reports first, and technical detail one click deeper, with the four roles seeing only
+what they may use. See `frontend/README.md` to run and deploy it and `docs/FRONTEND.md` for how it works.
+
+    cd frontend && npm ci && npm run dev       # http://localhost:5173
+
+The API's `CORS_ORIGINS` must list the dashboard's exact origin. After `git pull` on an existing install, run
+`npx prisma db push` once: Stage 9 added one column, `security_users.mustChangePassword` (default false).
+
 ## Environment Variables
 
 Copy backend/.env.example to backend/.env and fill in:
@@ -32,6 +43,8 @@ Copy backend/.env.example to backend/.env and fill in:
 - JWT_REFRESH_SECRET    Long random string, 64+ chars
 - API_KEY_HASH_PEPPER   Random pepper for API key hashing
 - BOOTSTRAP_ADMIN_*     Used once by npm run seed
+- CORS_ORIGINS          The dashboard's exact origin(s), comma separated
+- COOKIE_SECURE         Optional. The browser refresh cookie is Secure in production by default
 
 Generate secrets:
 

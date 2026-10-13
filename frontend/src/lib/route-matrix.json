@@ -1,0 +1,186 @@
+{
+  "DELETE /api/v1/api-keys/:id": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN"
+  ],
+  "DELETE /api/v1/security/allow/:ip": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN"
+  ],
+  "GET /api/v1/api-keys": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN"
+  ],
+  "GET /api/v1/audit-logs": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN",
+    "ANALYST"
+  ],
+  "GET /api/v1/auth/assignees": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN"
+  ],
+  "GET /api/v1/auth/me": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN",
+    "ANALYST",
+    "VIEWER"
+  ],
+  "GET /api/v1/auth/users": [
+    "SUPER_ADMIN"
+  ],
+  "GET /api/v1/events": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN",
+    "ANALYST"
+  ],
+  "GET /api/v1/events/:id": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN",
+    "ANALYST"
+  ],
+  "GET /api/v1/incidents": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN",
+    "ANALYST",
+    "VIEWER"
+  ],
+  "GET /api/v1/incidents/:id": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN",
+    "ANALYST",
+    "VIEWER"
+  ],
+  "GET /api/v1/ips": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN",
+    "ANALYST"
+  ],
+  "GET /api/v1/ips/:ip": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN",
+    "ANALYST",
+    "VIEWER"
+  ],
+  "GET /api/v1/reports/executive-summary": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN",
+    "ANALYST",
+    "VIEWER"
+  ],
+  "GET /api/v1/reports/incidents/:id": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN",
+    "ANALYST",
+    "VIEWER"
+  ],
+  "GET /api/v1/reports/security-summary": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN",
+    "ANALYST"
+  ],
+  "GET /api/v1/reports/technical/:id": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN",
+    "ANALYST"
+  ],
+  "GET /api/v1/rules": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN"
+  ],
+  "GET /api/v1/security/allowlist": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN",
+    "ANALYST",
+    "VIEWER"
+  ],
+  "GET /api/v1/security/blocked-ips": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN",
+    "ANALYST",
+    "VIEWER"
+  ],
+  "GET /api/v1/security/blocks/history": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN",
+    "ANALYST"
+  ],
+  "GET /api/v1/settings/operational": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN"
+  ],
+  "GET /api/v1/statistics": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN",
+    "ANALYST",
+    "VIEWER"
+  ],
+  "PATCH /api/v1/auth/users/:id": [
+    "SUPER_ADMIN"
+  ],
+  "PATCH /api/v1/rules/:code": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN"
+  ],
+  "POST /api/v1/api-keys": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN"
+  ],
+  "POST /api/v1/api-keys/:id/rotate": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN"
+  ],
+  "POST /api/v1/auth/change-password": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN",
+    "ANALYST",
+    "VIEWER"
+  ],
+  "POST /api/v1/auth/users": [
+    "SUPER_ADMIN"
+  ],
+  "POST /api/v1/auth/users/:id/reset-password": [
+    "SUPER_ADMIN"
+  ],
+  "POST /api/v1/events": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN",
+    "ANALYST",
+    "VIEWER"
+  ],
+  "POST /api/v1/incidents/:id/assign": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN"
+  ],
+  "POST /api/v1/incidents/:id/notes": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN",
+    "ANALYST"
+  ],
+  "POST /api/v1/incidents/:id/status": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN",
+    "ANALYST"
+  ],
+  "POST /api/v1/ips/:ip/refresh-intelligence": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN",
+    "ANALYST"
+  ],
+  "POST /api/v1/rules/:code/reset": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN"
+  ],
+  "POST /api/v1/security/allow": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN"
+  ],
+  "POST /api/v1/security/block": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN"
+  ],
+  "POST /api/v1/security/unblock": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN"
+  ]
+}

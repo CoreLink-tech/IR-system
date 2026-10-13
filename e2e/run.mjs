@@ -247,7 +247,7 @@ await scenario('05', 'Detection: one address attacking logins (escalation and au
   const last = first[first.length - 1].body;
   check('six failed logins are scored and an incident is opened', last.riskScore > 0 && !!last.incidentId, JSON.stringify(last));
   let inc = (await incidentsFor(a))[0];
-  check('the incident names the attacking address and is open', inc?.sourceIp === a && inc?.status === 'OPEN');
+  check('the incident names the attacking address and is open', inc?.sourceIp === a && inc?.status === 'OPEN', JSON.stringify({ found: inc ? { sourceIp: inc.sourceIp, status: inc.status } : null, wanted: a }));
   const sevBefore = inc?.severity;
   await burst(S.keys.full, Array.from({ length: 20 }, (_, i) => failedLogin(a, uid(`bg${i}`))), 1);
   const all = await incidentsFor(a);
@@ -255,7 +255,7 @@ await scenario('05', 'Detection: one address attacking logins (escalation and au
   check('the same incident keeps growing: exactly one incident for the address', all.length === 1, `${all.length} incidents`);
   check('it escalated to CRITICAL', inc?.severity === 'CRITICAL' && inc?.riskScore >= 85, `${sevBefore} -> ${inc?.severity} risk ${inc?.riskScore}`);
   const detail = (await http('GET', `/incidents/${inc.id}`, { token: admin() })).body;
-  check('the timeline records the escalation', detail.timeline?.some((t) => t.action === 'incident.escalated'));
+  check('the timeline records the escalation', detail.timeline?.some((t) => t.action === 'incident.escalated'), JSON.stringify((detail.timeline ?? []).map((t) => t.action)));
   check('the address was blocked automatically', await isBlocked(a));
   const ipd = (await http('GET', `/ips/${a}`, { token: admin() })).body;
   check('the address record shows the risk', ipd?.ip?.riskLevel === 'CRITICAL' && ipd?.ip?.failedLogins >= 26, JSON.stringify(ipd?.ip));
@@ -518,6 +518,97 @@ await scenario('13', 'Outage and recovery', async () => {
   let d2 = 0;
   for (let i = 0; i < 4; i++) d2 += (await eventsFor(`userId=${user2}-${i}`)).meta.total;
   check('events queued during the database outage were delivered, once each', d2 === 4, `${d2} of 4`);
+});
+
+await scenario('14', 'Dashboard: cookie session, user admin, rules, address list, notes', async () => {
+  // A tiny cookie jar, scoped like a browser's: the refresh cookie only travels to /auth routes.
+  const ORIGIN = process.env.E2E_DASHBOARD_ORIGIN ?? 'http://localhost:3000';
+  const jar = new Map();
+  const call = async (method, path, { token, key, body, headers = {} } = {}) => {
+    const h = { origin: ORIGIN, ...headers };
+    if (body !== undefined) h['content-type'] = 'application/json';
+    if (token) h.authorization = `Bearer ${token}`; if (key) h.authorization = `Bearer ${key}`;
+    if (path.startsWith('/auth') && jar.size) h.cookie = [...jar].map(([k, v]) => `${k}=${v}`).join('; ');
+    const res = await fetch(`${API}${path}`, { method, headers: h, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(15000) });
+    for (const c of res.headers.getSetCookie?.() ?? []) { const [pair] = c.split(';'); const i = pair.indexOf('='); const n = pair.slice(0, i), v = pair.slice(i + 1); if (/Max-Age=0/i.test(c) || !v) jar.delete(n); else jar.set(n, v); }
+    const text = await res.text(); let json; try { json = JSON.parse(text); } catch { /* text */ }
+    return { status: res.status, json, headers: res.headers, text };
+  };
+  const adminToken = S.admin.accessToken;
+
+  const h = await call('GET', '/health');
+  check('health is public and carries no secrets', h.status === 200 && Object.keys(h.json).sort().join() === 'service,status,time,version');
+
+  // cookie session
+  const l = await call('POST', '/auth/login', { body: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD, useCookie: true } });
+  check('browser sign-in keeps the refresh token out of the body', l.status === 201 && l.json.refreshToken === undefined && !!l.json.csrfToken);
+  check('and sets an httpOnly, SameSite=Strict cookie scoped to the auth routes', jar.has('pishon_rt'));
+  const csrf = await call('GET', '/auth/csrf');
+  check('a CSRF token is available to the page that holds the cookie', csrf.status === 200 && !!csrf.json.csrfToken);
+  check('refresh without the CSRF token is refused', (await call('POST', '/auth/refresh', { body: {} })).status === 403);
+  check('refresh from another website is refused', (await call('POST', '/auth/refresh', { body: {}, headers: { origin: 'https://evil.example', 'x-csrf-token': csrf.json.csrfToken } })).status === 403);
+  const stale = jar.get('pishon_rt');
+  const rf = await call('POST', '/auth/refresh', { body: {}, headers: { 'x-csrf-token': csrf.json.csrfToken } });
+  check('refresh with cookie and CSRF token works and rotates the cookie', rf.status === 201 && jar.get('pishon_rt') !== stale);
+  jar.set('pishon_rt', stale);
+  const reuse = await call('POST', '/auth/refresh', { body: {}, headers: { 'x-csrf-token': csrf.json.csrfToken } });
+  check('replaying the old cookie is treated as theft and says so', reuse.status === 401 && reuse.json.code === 'refresh_token_reuse');
+  const legacy = await login(ADMIN_EMAIL, ADMIN_PASSWORD);
+  check('the original body-token flow for non-browser clients still works', !!legacy?.refreshToken && !!legacy?.accessToken);
+  const legacyRefresh = await http('POST', '/auth/refresh', { body: { refreshToken: legacy.refreshToken } });
+  check('and so does refreshing with a body token', legacyRefresh.status === 201 && !!legacyRefresh.body.refreshToken);
+
+  // user administration
+  const me = await http('GET', '/auth/me', { token: adminToken });
+  check('GET auth/me returns the signed-in account', me.status === 200 && me.body.role === 'SUPER_ADMIN');
+  const pw = `E2e-${RUN}-Pass-1!`;
+  const made = await http('POST', '/auth/users', { token: adminToken, body: { email: `${uid('dash')}@example.test`, password: pw, role: 'ANALYST', requirePasswordChange: true } });
+  check('create an account that must change its password', made.status === 201);
+  const first = await login(`${uid('dash')}@example.test`, pw);
+  const gated = await http('GET', '/incidents', { token: first.accessToken });
+  check('until it does, the server refuses everything but me and change-password', gated.status === 403 && gated.body.code === 'password_change_required');
+  const newpw = `E2e-${RUN}-New-Pass-2!`;
+  check('change-password works while gated', (await http('POST', '/auth/change-password', { token: first.accessToken, body: { currentPassword: pw, newPassword: newpw } })).status === 201);
+  const second = await login(`${uid('dash')}@example.test`, newpw);
+  check('afterwards the account works normally', (await http('GET', '/incidents', { token: second.accessToken })).status === 200);
+  check('a super admin cannot demote or deactivate themselves', (await http('PATCH', `/auth/users/${me.body.id}`, { token: adminToken, body: { role: 'VIEWER' } })).body.code === 'self_change_forbidden');
+  check('an analyst cannot administer users', (await http('GET', '/auth/users', { token: second.accessToken })).status === 403);
+  const reset = await http('POST', `/auth/users/${made.body.id}/reset-password`, { token: adminToken, body: { newPassword: `E2e-${RUN}-Reset-3!` } });
+  check('a reset ends the target\'s sessions and returns nothing sensitive', reset.status === 201 && Object.keys(reset.body).join() === 'ok' && (await http('POST', '/auth/refresh', { body: { refreshToken: second.refreshToken } })).status === 401);
+  const off = await http('PATCH', `/auth/users/${made.body.id}`, { token: adminToken, body: { isActive: false } });
+  check('deactivating an account works and it can no longer sign in', off.status === 200 && (await http('POST', '/auth/login', { body: { email: `${uid('dash')}@example.test`, password: `E2e-${RUN}-Reset-3!` } })).status === 401);
+  // (Parallel demotion of the last two super admins is not run here: it would put the shared database's real administrator at risk. See docs/TESTING.md.)
+
+  // rules
+  const rules = await http('GET', '/rules', { token: adminToken });
+  const bf = rules.body.data.find((r) => r.code === 'brute_force_login');
+  check('rules are listed with defaults and limits', rules.status === 200 && rules.body.data.length === 16 && bf.limits.threshold.editable === true && bf.limits.windowMinutes.editable === false);
+  check('an out-of-range value, a fixed window change and an unknown setting are all refused', (await Promise.all([{ threshold: 0 }, { windowMinutes: 60 }, { nope: 1 }].map((c) => http('PATCH', '/rules/brute_force_login', { token: adminToken, body: { config: c } })))).every((r) => r.status === 400));
+  const edited = await http('PATCH', '/rules/brute_force_login', { token: adminToken, body: { config: { threshold: bf.config.threshold + 1, incidentAt: bf.config.incidentAt + 1 }, reason: `e2e ${RUN}` } });
+  check('a valid change is stored in full', edited.status === 200 && Object.keys(edited.body.config).length === Object.keys(bf.config).length);
+  const hist = await http('GET', '/audit-logs?targetType=rule&targetId=brute_force_login&pageSize=5&sortBy=createdAt&sortOrder=desc', { token: adminToken });
+  check('the change is audited with old and new values and the reason', hist.body.data.some((a) => a.metadata?.old && a.metadata?.new && a.metadata.reason === `e2e ${RUN}`));
+  check('reset puts the defaults back', (await http('POST', '/rules/brute_force_login/reset', { token: adminToken, body: {} })).body.isDefault === true);
+  check('an analyst cannot read or change rules', (await http('GET', '/rules', { token: S.analyst.accessToken })).status === 403);
+
+  // address list, notes, INC lookup, settings
+  const inc = (await http('GET', '/incidents?pageSize=1&sortBy=createdAt&sortOrder=desc', { token: adminToken })).body.data[0];
+  if (!inc) return skip('incident-based checks', 'no incident exists yet');
+  const byNo = await http('GET', `/incidents/${inc.incidentId}`, { token: adminToken });
+  check('an incident can be opened by its public number as well as its id', byNo.status === 200 && byNo.body.id === inc.id && 'assignee' in byNo.body);
+  const noted = await http('POST', `/incidents/${inc.id}/notes`, { token: adminToken, body: { note: `e2e note ${RUN}` } });
+  const after = await http('GET', `/incidents/${inc.id}`, { token: adminToken });
+  check('a note lands on the timeline and leaves the status alone', noted.status === 201 && after.body.timeline.some((t) => t.details === `e2e note ${RUN}`) && after.body.status === inc.status);
+  const ips = await http('GET', '/ips?pageSize=5&sortBy=riskScore&sortOrder=desc', { token: adminToken });
+  check('the address list returns rows with a blocked flag', ips.status === 200 && ips.body.data.length > 0 && typeof ips.body.data[0].blocked === 'boolean');
+  check('a viewer cannot read the address list', (await http('GET', '/ips', { token: S.viewer.accessToken })).status === 403);
+  const st = await http('GET', '/settings/operational', { token: adminToken });
+  check('operational settings are shown without any secret', st.status === 200 && !/secret|pepper|mysql:|password/i.test(JSON.stringify(st.body)));
+  const rev = await http('POST', '/api-keys', { token: adminToken, body: { name: `e2e-${RUN}-rev`, scopes: ['events:write'] } });
+  const revoked = await http('DELETE', `/api-keys/${rev.body.id}`, { token: adminToken });
+  check('revoking a key does not return its stored hash', revoked.status === 200 && !('keyHash' in (revoked.body ?? {})));
+  const cors = await call('OPTIONS', '/incidents', { headers: { 'access-control-request-method': 'GET', 'access-control-request-headers': 'authorization' } });
+  check('CORS allows the configured dashboard origin and exposes Retry-After', cors.headers.get('access-control-allow-origin') === ORIGIN && /Retry-After/i.test((await call('GET', '/health')).headers.get('access-control-expose-headers') ?? ''));
 });
 
 await scenario('98', 'Rate limits', async () => {

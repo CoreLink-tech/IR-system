@@ -19,7 +19,8 @@
     "gen:secrets": "node scripts/gen-secrets.js",
     "test:php": "php ../integration/php/tests/all.php",
     "test:all": "jest --coverage && php ../integration/php/tests/all.php",
-    "test:e2e": "node ../e2e/run.mjs"
+    "test:e2e": "node ../e2e/run.mjs",
+    "export:routes": "ts-node -r tsconfig-paths/register scripts/export-route-matrix.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.4",

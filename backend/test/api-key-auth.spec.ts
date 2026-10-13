@@ -56,6 +56,14 @@ describe('ApiKeysService', () => {
     expect(await keyStore().svc.verifyApiKey('PMS_0000000000000000notarealkey')).toBeNull();
   });
 
+  it('REGRESSION revoke response: revoking a key returned the whole stored record, including its hash', async () => {
+    const { svc, rows } = keyStore();
+    const { id } = await svc.create({ name: 'site', scopes: ['events:write'] });
+    const out: any = await svc.revoke(id);
+    expect(Object.keys(out).sort()).toEqual(['id', 'isActive', 'name', 'revokedAt']);
+    expect(JSON.stringify(out)).not.toContain(rows[0].keyHash);
+  });
+
   it('rejects a revoked key', async () => {
     const { rows, svc } = keyStore();
     const { apiKey, id } = await svc.create({ name: 'website', scopes: ['events:write'] });
