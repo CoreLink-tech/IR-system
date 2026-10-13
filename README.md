@@ -19,7 +19,7 @@ Production-oriented incident response backend for Pishon Market.
                              # the server refuses to start with the sample placeholders
     npm install
     npx prisma generate
-    npx prisma db push
+    npx prisma migrate deploy
     npm run seed
     npm run start:dev
 
@@ -32,7 +32,7 @@ what they may use. See `frontend/README.md` to run and deploy it and `docs/FRONT
     cd frontend && npm ci && npm run dev       # http://localhost:5173
 
 The API's `CORS_ORIGINS` must list the dashboard's exact origin. After `git pull` on an existing install, run
-`npx prisma db push` once: Stage 9 added one column, `security_users.mustChangePassword` (default false).
+`npx prisma migrate deploy`. A database first created with `prisma db push` must be baselined once: see `docs/DATABASE.md`.
 
 ## Environment Variables
 

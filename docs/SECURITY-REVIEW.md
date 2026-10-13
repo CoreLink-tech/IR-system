@@ -38,6 +38,19 @@ that fails without it. Items marked "not verified" say how the owner can check t
 - A very long header could be parsed at length. Both sides now treat more than 32 entries or more than
   2048 characters as unreliable. Vectors: "33 entries", "over-long header".
 
+### F-07 Upgrading an older database left the one-per-slot protections unenforced (Workstream 3)
+- Where: the Stage 8 fix for parallel incidents and blocks added `openKey` and `activeKey`, but nothing
+  filled them for rows that already existed, and the documented upgrade was `prisma db push`.
+- Impact: on an upgraded database, an existing open incident or active block held no slot, so the
+  application could open a second open incident, or a second active block, beside it. The guarantee
+  the Stage 8 tests proved applied only to new rows. Had an old database held duplicates, adding the
+  unique index would also have failed.
+- Fix: migration `20260101000200_stage8_unique_slots` backfills the slots with documented tie-breaks
+  (nothing closed, no block deactivated), then adds the unique indexes.
+- Regression proof: `npm run verify:migrations` section 2 (duplicate open incidents and active blocks,
+  winners, nothing lost or reopened, second open incident and second active block refused afterwards).
+  Removing the backfill makes it fail.
+
 ## Verification notes for workstream 1
 - Backend: 715 tests passing, run against the repository's Prisma 5 package set (the Prisma engine is
   not needed by these tests, which use in-memory stand-ins).

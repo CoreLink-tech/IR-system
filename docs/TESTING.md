@@ -22,6 +22,7 @@
 | IP intelligence | Each provider, merging, caching, failure handling |
 | Configuration | Startup refusal of placeholder and weak secrets |
 | PHP library | Visitor address and trusted proxies, blocklist cache, circuit breaker, event queue and replay, redaction, guard modes, configuration, PHP 7.4 syntax check, end-to-end through a fake API (211 checks) |
+| Migrations | `test/migrations-static.spec.ts` (every schema table, column and index is in a migration; nothing destructive) and, against a real MySQL or MariaDB, `npm run verify:migrations` (migrations equal the schema, a Stage 1 database upgrades with data intact, stage detection). See `docs/DATABASE.md` |
 | Client addresses | `test/client-ip.spec.ts`: 47 shared forwarding cases, spoofing from untrusted and trusted peers, multi-hop, duplicate headers, and HTTP-level proof that a forged X-Forwarded-For does not change the rate limit bucket, the audit record or the login record |
 | Address parsing | One shared file of 95 cases, run by both the server tests and the PHP tests, so both sides agree on what an address means |
 
@@ -76,8 +77,8 @@ demotion of the last two super admins on a live database (one succeeded, one was
 Not verified (state this to anyone relying on it): behaviour in a real browser (no browser could be
 installed where this was built), so layout at 360 px, touch target sizes, print output, real colour
 contrast, CSP enforcement and two real tabs are covered by jsdom stand-ins and by Playwright tests
-that are written and typechecked but were never run; `prisma db push` (the schema engine could not be
-downloaded, so the tables for the live runs were created from the schema by a script, with Prisma 6's
+that are written and typechecked but were never run; `prisma migrate deploy` (the schema engine could not be
+downloaded, so the tables for the live runs were created by applying the migration SQL directly or from the schema by a script, with Prisma 6's
 engine-free client and the MariaDB adapter, not the repository's Prisma 5); real MySQL; PHP 7.4 (PHP 8.3.6 was used).
 
 ## End-to-end suite

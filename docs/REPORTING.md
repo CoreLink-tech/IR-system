@@ -57,7 +57,7 @@ states this window in its limitations.
 Detection now stores which rules fired on each event (`security_events.matchedRules`,
 a nullable JSON column). An empty list means "checked, nothing fired". A null value
 means the event was recorded before this field existed; reports say so instead of
-guessing. After updating, run `npx prisma db push` to add the column. The change is
+guessing. After updating, run `npx prisma migrate deploy` (see `docs/DATABASE.md`). The change is
 additive and safe for existing data.
 
 ## Adding wording for a new rule
