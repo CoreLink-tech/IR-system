@@ -96,4 +96,15 @@ GET /api/v1/security/blocked-ips. Automatic blocks are always temporary.
 
 ## License
 
-MIT
+Copyright © 2026 CoreLink-tech. All rights reserved.
+
+This project is source-available, not open source. You may view and
+inspect it for private, non-commercial evaluation, research, education,
+and security review only.
+
+Copying, modification, redistribution, commercial use, hosted deployment,
+sublicensing, use in a competing product, and AI training or evaluation
+are prohibited unless CoreLink-tech gives prior written permission.
+
+See [`LICENSE`](./LICENSE) for the complete terms. For commercial
+licensing, contact: ashedavid2005@gmail.com 
