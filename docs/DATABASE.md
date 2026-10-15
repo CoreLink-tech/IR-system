@@ -13,7 +13,7 @@ created or changed.
     cd backend
     npx prisma migrate deploy
 
-This applies all five migrations in order and records them in `_prisma_migrations`.
+This applies all six migrations in order and records them in `_prisma_migrations`.
 
 ## Existing database (created earlier with `prisma db push`)
 
@@ -39,8 +39,8 @@ Take a backup first (see the backup runbook when it is added in a later Stage 10
         npx prisma migrate deploy
         npx prisma migrate status
 
-A database from the current stage (Stage 9) is all `present = 1`: mark all five as applied and
-there is nothing to deploy.
+A database that has every migration is all `present = 1`: mark all six as applied and there is nothing to deploy.
+A Stage 9 database has the first five; deploy the sixth (indexes only, no data changes).
 
 ## Every schema change shipped so far
 
@@ -51,6 +51,7 @@ there is nothing to deploy.
 | `20260101000200_stage8_unique_slots` | Stage 8 | `security_incidents.openKey` and `security_ip_blocks.activeKey`, each with a unique index | Backfilled, see below |
 | `20260101000300_stage8_event_external_id` | Stage 8 | `security_events.externalId` and a unique index on (`apiKeyId`, `externalId`) | Old events keep NULL; the pair is unique only when both parts are set |
 | `20260101000400_stage9_must_change_password` | Stage 9 | `security_users.mustChangePassword` (boolean, default false) | Everyone starts as false |
+| `20260101000500_stage10_indexes` | Stage 10 | Index review: five composite event indexes and one audit index added, seven single-column or duplicate indexes dropped | None. Indexes only, see "Index review" |
 
 ### How existing rows are backfilled (Stage 8)
 
@@ -119,3 +120,61 @@ available). To check both on your own server, with a scratch database as the sha
 
 Exit code 0 means Prisma itself agrees the migrations equal the schema. Then run the "New database"
 steps against another scratch database.
+
+## Index review (Stage 10)
+
+Method: `scripts/index-review.mjs` builds a deterministic dataset and runs 62 query shapes copied from the
+application's services. The dataset has 660,000 events (60 days of ordinary traffic, one attacker address with
+40,000 events over three days attached to one incident, and a distributed attack of 20,000 failed sign-ins from
+4,000 addresses in the last 10 minutes), 30,000 incidents, 150,000 audit rows, 60,000 addresses and 30,000
+blocks. Rows read and times come from `ANALYZE FORMAT=JSON` on MariaDB 10.11, best of three warm runs, on a
+single-CPU sandbox. They are relative evidence about the plans, not a capacity claim (Workstream 7 measures
+capacity).
+
+What was wrong: the event table had only single-column indexes. For "this address (or account, incident, type)
+within a time window", which runs on every incoming event, the optimizer picked the time index or the address
+index and read tens of thousands of rows. The attacker address is the worst case and the one that matters: an
+attacker who sends more events makes every later event of theirs more expensive to process (an amplification an
+attacker could use against ingestion).
+
+What changed (migration `20260101000500_stage10_indexes`): each single-column index that these lookups used is
+replaced by a composite that starts with the same column and ends with the time the window or sort uses
+(`ipAddress, occurredAt`; `eventType, occurredAt`; `userId, eventType, occurredAt`; `incidentId, occurredAt`;
+`severity, occurredAt`), plus `security_audit_logs (targetId, createdAt)`. The unused `riskLevel` event index and
+the duplicate `security_api_keys.keyPrefix` index (the column is already unique) are dropped. The events table
+goes from nine indexes to eight.
+
+Queries that changed by more than a factor of 1.6 (all others were within noise):
+
+| Query | Index used before | Rows read | ms | Index used after | Rows read | ms |
+|---|---|---:|---:|---|---:|---:|
+| ingest: failed sign-ins from one address, last 10 min (attacker) | `occurredAt` | 20,174 | 24.0 | `ipAddress_occurredAt` | 99 | 0.2 |
+| ingest: all events from one address, last 10 min (attacker) | `occurredAt` | 20,174 | 23.7 | `ipAddress_occurredAt` | 99 | 0.0 |
+| ingest: distinct accounts failed from one address (attacker) | `occurredAt` | 20,174 | 24.8 | `ipAddress_occurredAt` | 99 | 0.2 |
+| ingest: password resets from one address | `eventType` | 6,000 | 10.2 | `eventType_occurredAt` | 0 | 0.0 |
+| ingest: highest risk from one address, last 24 h (attacker) | `ipAddress` | 40,000 | 46.3 | `ipAddress_occurredAt` | 14,071 | 18.1 |
+| events list: filter severity=CRITICAL, newest first | `occurredAt` | 24,651 | 30.3 | `severity_occurredAt` | 20 | 0.1 |
+| events list: filter address (attacker), newest first | `occurredAt` | 4,047 | 5.1 | `ipAddress_occurredAt` | 20 | 0.1 |
+| incidents: events of the big incident, newest 200 | `occurredAt` | 20,353 | 23.6 | `incidentId_occurredAt` | 200 | 0.3 |
+| reports: attacker incident: events in range (count, min, max) | `ipAddress` | 40,000 | 47.0 | `ipAddress_occurredAt` | 40,000 | 9.1 |
+| reports: sign-ins that succeeded in the last 30 days | `eventType` | 64,000 | 93.9 | `eventType_occurredAt` | 36,400 | 7.8 |
+| audit: one target (type + id), newest first | `createdAt` | 150,000 | 166.4 | `targetId_createdAt` | 8 | 0.0 |
+
+Cost of the change, measured: inserting 300,000 events took 4.7 to 4.8 s with the old index set and 4.5 to 4.7 s with
+the new one (one index fewer). The events indexes grow from 61 MB to 69 MB at this size (+13%). A covering variant
+(`eventType, occurredAt, ipAddress`) cost about 8% more on writes, was not chosen by the optimizer for the grouping
+query it was meant to help, and was not adopted.
+
+Known limits found by the review, not fixed here (each has a Workstream that owns it):
+
+- The distributed-attack rule reads every failed sign-in in its 10 minute window (about 20,000 rows, 35 ms) for each
+  failed sign-in that arrives during such an attack. It is the same 34 to 38 ms before and after. At a high failed
+  sign-in rate this is the first thing to saturate. Workstream 7 measures it; the likely fix is to evaluate that rule
+  at most once every few seconds.
+- The dashboard summary runs three grouped scans of the last 24 hours (about 65 to 80 ms each at 45,000 events a day).
+  This grows with event volume. Workstream 7 decides between a short cache and hourly roll-up counts.
+- Sorting the event list by risk score is a full scan and sort (120 ms at 660,000 events). The other sort columns use an
+  index. The page can restrict the allowed sorts if this becomes a problem.
+- The audit log filter "action contains" is a substring search and cannot use an index; it is fast only while the
+  log is bounded. The retention job in this Workstream keeps it bounded.
+- Total counts for the event list (`COUNT(*)`, 68 ms at 660,000 rows) grow with the table.

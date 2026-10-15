@@ -148,6 +148,10 @@ apply(DBS.fresh, migrations.slice(0, 2));
 sql('ALTER TABLE security_incidents ADD COLUMN openKey VARCHAR(191) NULL;', DBS.fresh);
 check('an interrupted upgrade (one of four parts present) is reported as partial', detect(DBS.fresh).split(',')[2] === '01', detect(DBS.fresh));
 reset(DBS.fresh);
+apply(DBS.fresh, migrations.slice(0, 5));
+sql('CREATE INDEX security_events_ipAddress_occurredAt_idx ON security_events(ipAddress, occurredAt);', DBS.fresh);
+check('an interrupted index migration (new index made, old ones not yet dropped) is reported as partial', detect(DBS.fresh).split(',')[5] === '01', detect(DBS.fresh));
+reset(DBS.fresh);
 check('an empty database is reported as having nothing', detect(DBS.fresh) === migrations.map(() => '00').join(','));
 
 Object.values(DBS).forEach((d) => sql(`DROP DATABASE IF EXISTS \`${d}\``));

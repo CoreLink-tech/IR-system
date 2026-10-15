@@ -31,5 +31,25 @@ FROM (
     UNION ALL
     SELECT '20260101000400_stage9_must_change_password', 5, 1,
         (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'security_users' AND column_name = 'mustChangePassword')
+    UNION ALL
+    -- Present when the six new indexes exist and the seven replaced or duplicate ones are gone.
+    -- The "gone" part only counts once a new index exists, so a database that never had the
+    -- migration is simply absent (0), and an interrupted one is partial.
+    SELECT '20260101000500_stage10_indexes', 6, 13,
+        n.new_present + CASE WHEN n.new_present > 0 THEN 7 - o.old_present ELSE 0 END
+    FROM (
+        SELECT COUNT(DISTINCT index_name) AS new_present FROM information_schema.statistics
+        WHERE table_schema = DATABASE() AND index_name IN (
+            'security_events_ipAddress_occurredAt_idx','security_events_eventType_occurredAt_idx',
+            'security_events_userId_eventType_occurredAt_idx','security_events_incidentId_occurredAt_idx',
+            'security_events_severity_occurredAt_idx','security_audit_logs_targetId_createdAt_idx')
+    ) n
+    CROSS JOIN (
+        SELECT COUNT(DISTINCT index_name) AS old_present FROM information_schema.statistics
+        WHERE table_schema = DATABASE() AND index_name IN (
+            'security_events_ipAddress_idx','security_events_eventType_idx','security_events_userId_idx',
+            'security_events_incidentId_idx','security_events_severity_idx','security_events_riskLevel_idx',
+            'security_api_keys_keyPrefix_idx')
+    ) o
 ) t
 ORDER BY ord;

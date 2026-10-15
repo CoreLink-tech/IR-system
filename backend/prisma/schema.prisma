@@ -59,7 +59,6 @@ model SecurityApiKey {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
-  @@index([keyPrefix])
   @@map("security_api_keys")
 }
 
@@ -91,13 +90,14 @@ model SecurityEvent {
   incident SecurityIncident? @relation(fields: [incidentId], references: [id])
 
   @@unique([apiKeyId, externalId])
-  @@index([ipAddress])
+  // Chosen from the real query plans (docs/DATABASE.md): each leads with the column the lookup
+  // filters on and ends with the time the window or the sort uses.
   @@index([occurredAt])
-  @@index([eventType])
-  @@index([severity])
-  @@index([userId])
-  @@index([incidentId])
-  @@index([riskLevel])
+  @@index([ipAddress, occurredAt])
+  @@index([eventType, occurredAt])
+  @@index([userId, eventType, occurredAt])
+  @@index([incidentId, occurredAt])
+  @@index([severity, occurredAt])
   @@map("security_events")
 }
 
@@ -250,5 +250,6 @@ model SecurityAuditLog {
   @@index([action])
   @@index([createdAt])
   @@index([userId])
+  @@index([targetId, createdAt])
   @@map("security_audit_logs")
 }

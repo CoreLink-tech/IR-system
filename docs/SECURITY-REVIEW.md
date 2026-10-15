@@ -51,6 +51,17 @@ that fails without it. Items marked "not verified" say how the owner can check t
   winners, nothing lost or reopened, second open incident and second active block refused afterwards).
   Removing the backfill makes it fail.
 
+### F-08 Ingestion cost grew with an attacker's own traffic (Workstream 3)
+- Where: detection looks up "events from this address in the last 10 minutes" for every event. With only a
+  single-column address index, and the optimizer choosing between that and the time index, an address with 40,000
+  stored events made each new event from it read about 20,000 to 40,000 rows (24 to 46 ms).
+- Impact: the more an attacker sent, the more each of their events cost to process, which can be used to slow
+  ingestion for everyone (a denial of service by amplification).
+- Fix: composite indexes (address, time) and others, migration `20260101000500_stage10_indexes`. The same lookups
+  read about 100 rows (0.0 to 0.2 ms). Details and measurements: docs/DATABASE.md, "Index review".
+- Regression proof: `scripts/index-review.mjs` (the attacker queries must show the composite index and a small
+  row count); `test/migrations-static.spec.ts` fails if the indexes disappear from the schema without a migration.
+
 ## Verification notes for workstream 1
 - Backend: 715 tests passing, run against the repository's Prisma 5 package set (the Prisma engine is
   not needed by these tests, which use in-memory stand-ins).
