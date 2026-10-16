@@ -8,6 +8,8 @@
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main.js",
+    "cleanup": "node dist/retention/cleanup.js",
+    "cleanup:dry": "node dist/retention/cleanup.js --dry-run",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "db:migrate": "prisma migrate deploy",

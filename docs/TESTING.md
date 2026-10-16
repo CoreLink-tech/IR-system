@@ -3,7 +3,7 @@
 ## Running the tests
 
     cd backend
-    npm test            # 715 unit and HTTP-level tests
+    npm test            # 746 unit and HTTP-level tests (plus 7 real-database cleanup tests that run only against a scratch database)
     npm run test:cov    # same, plus coverage; fails if coverage drops below the floors
     npm run test:php    # the PHP library tests, three files (needs php with the curl extension)
     npm run test:all    # both
@@ -22,6 +22,8 @@
 | IP intelligence | Each provider, merging, caching, failure handling |
 | Configuration | Startup refusal of placeholder and weak secrets |
 | PHP library | Visitor address and trusted proxies, blocklist cache, circuit breaker, event queue and replay, redaction, guard modes, configuration, PHP 7.4 syntax check, end-to-end through a fake API (211 checks) |
+| Retention | `test/retention.spec.ts` (settings and floors, lock, batching, evidence rules, retries, time limit, dry run) and `test/retention-db.spec.ts` against a real MySQL or MariaDB, including cleanup during live inserts. See `docs/DATABASE.md` |
+| Build layout | `test/build-layout.spec.ts` (build must put main.js at dist/main.js) |
 | Migrations | `test/migrations-static.spec.ts` (every schema table, column and index is in a migration; nothing destructive) and, against a real MySQL or MariaDB, `npm run verify:migrations` (migrations equal the schema, a Stage 1 database upgrades with data intact, stage detection). See `docs/DATABASE.md` |
 | Client addresses | `test/client-ip.spec.ts`: 47 shared forwarding cases, spoofing from untrusted and trusted peers, multi-hop, duplicate headers, and HTTP-level proof that a forged X-Forwarded-For does not change the rate limit bucket, the audit record or the login record |
 | Address parsing | One shared file of 95 cases, run by both the server tests and the PHP tests, so both sides agree on what an address means |

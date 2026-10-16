@@ -44,6 +44,7 @@ Copy backend/.env.example to backend/.env and fill in:
 - JWT_REFRESH_SECRET    Long random string, 64+ chars
 - API_KEY_HASH_PEPPER   Random pepper for API key hashing
 - BOOTSTRAP_ADMIN_*     Used once by npm run seed
+- RETENTION_*          How long events, audit entries, incidents, blocks and tokens are kept, and how the cleanup command batches its work. Defaults are safe; see `docs/DATABASE.md`. Run `npm run cleanup` nightly
 - API_KEY_PREFIX        Prefix of generated API keys. Default `IRS_` (earlier builds used `PMS_`: set `API_KEY_PREFIX=PMS_` to keep keys issued by those builds working)
 - CORS_ORIGINS          The dashboard's exact origin(s), comma separated
 - TRUSTED_PROXIES       Reverse proxies whose X-Forwarded-For is believed: addresses, CIDR blocks, or `private`. Empty by default (headers ignored)

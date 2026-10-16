@@ -62,6 +62,27 @@ that fails without it. Items marked "not verified" say how the owner can check t
 - Regression proof: `scripts/index-review.mjs` (the attacker queries must show the composite index and a small
   row count); `test/migrations-static.spec.ts` fails if the indexes disappear from the schema without a migration.
 
+### F-09 The audit table grew with traffic and doubled the write work per event (Workstream 3)
+- Where: every accepted event writes one `event.ingest` audit row in addition to the event itself
+  (`events.service.ts`). With audit kept for a year and events for 90 days, the audit table would hold about
+  four times as many rows as the events table, at about 550 bytes each.
+- Impact: unbounded disk growth in the audit log; one extra insert, with six indexes, in the ingestion path of
+  every event (this matters for the load tests in Workstream 7).
+- Fix applied now: a separate, shorter limit for these rows (`RETENTION_INGEST_AUDIT_DAYS`, default 30) so the
+  general audit log keeps its year.
+- Open decision for the owner (to be settled with the Workstream 7 measurements): stop writing the per-event
+  audit row, because the event row already records the key that sent it and when.
+- Regression proof: `test/retention-db.spec.ts` (ingestion rows past 30 days removed, other audit rows
+  untouched).
+
+### F-10 The production start command did not work after a build (Workstream 3)
+- Where: `npm run build` produced `dist/src/main.js`, but `npm run start:prod` runs `node dist/main.js`. A
+  TypeScript file added under `scripts/` made TypeScript treat the backend folder, not `src/`, as the source
+  root. Confirmed by building the repository and listing `dist/`.
+- Impact: a deployment that followed the README (`npm run build`, then `npm run start:prod`) would fail to start.
+- Fix: `tsconfig.build.json` now compiles `src/` only.
+- Regression test: `test/build-layout.spec.ts`. A build-and-start check belongs in the CI workstream.
+
 ## Verification notes for workstream 1
 - Backend: 715 tests passing, run against the repository's Prisma 5 package set (the Prisma engine is
   not needed by these tests, which use in-memory stand-ins).

@@ -178,3 +178,94 @@ Known limits found by the review, not fixed here (each has a Workstream that own
 - The audit log filter "action contains" is a substring search and cannot use an index; it is fast only while the
   log is bounded. The retention job in this Workstream keeps it bounded.
 - Total counts for the event list (`COUNT(*)`, 68 ms at 660,000 rows) grow with the table.
+
+## Retention and cleanup
+
+Left alone, the events and audit tables grow without limit. The cleanup command removes what is past its
+limit, in small batches, without stopping live traffic.
+
+    cd backend
+    npm run build                 # once per release
+    npm run cleanup:dry           # prints what WOULD be affected, changes nothing
+    npm run cleanup               # does it; exit code 0 = finished, 1 = a job failed or settings invalid
+
+Schedule it nightly, outside peak hours. With cron:
+
+    17 3 * * *  cd /srv/ir-system/backend && /usr/bin/node dist/retention/cleanup.js >> /var/log/ir-cleanup.log 2>&1
+
+Or as a systemd timer (`/etc/systemd/system/ir-cleanup.service` and `ir-cleanup.timer`):
+
+    [Service]
+    Type=oneshot
+    WorkingDirectory=/srv/ir-system/backend
+    EnvironmentFile=/etc/ir-system/backend.env
+    ExecStart=/usr/bin/node dist/retention/cleanup.js
+    User=irsystem
+
+    [Timer]
+    OnCalendar=*-*-* 03:17:00
+    Persistent=true
+    [Install]
+    WantedBy=timers.target
+
+Running it more than once, or from two servers at the same time, is safe: a database lock lets one run work
+and the other reports "another cleanup run holds the lock" and changes nothing. Stopping it part-way is safe
+too: every batch is committed on its own, and the next run carries on.
+
+### What is removed, and what is never removed
+
+| Job | Removes | Default | Setting |
+| --- | --- | --- | --- |
+| `events` | Events older than the limit. **Events that belong to an incident that is not resolved (open, investigating, contained) are kept**, however old, because they are the evidence | 90 days | `RETENTION_EVENT_DAYS` |
+| `incidents` | Resolved and false-positive incidents older than the limit, with their timeline | 730 days | `RETENTION_INCIDENT_DAYS` |
+| `audit_ingest` | The audit row written for each accepted event (`event.ingest`). The event is its own record | 30 days | `RETENTION_INGEST_AUDIT_DAYS` |
+| `audit_log` | All other audit entries (and any ingestion entries left) | 365 days | `RETENTION_AUDIT_DAYS` |
+| `refresh_tokens` | Refresh tokens that expired more than the grace period ago. A revoked token that has not expired yet is kept, so a stolen token being replayed is still detected | 7 days after expiry | `RETENTION_TOKEN_GRACE_DAYS` |
+| `expire_blocks` | Not a deletion. Temporary blocks whose time has passed are switched off, which frees their address slot. The row stays as history. Permanent blocks are never touched | always | none |
+| `block_history` | Inactive blocks older than the limit | 365 days | `RETENTION_BLOCK_HISTORY_DAYS` |
+| `expired_allowlist` | Allowlist entries that expired more than the grace period ago. Entries with no expiry are never removed | 7 days | `RETENTION_EXPIRED_ENTRY_DAYS` |
+
+A limit of `0` keeps that table forever (the job is skipped). Limits below a safe floor (events 7 days, audit
+30, incidents 30, block history 30, ingestion audit 7) are refused and the API will not start, so a typing
+mistake cannot erase recent evidence. Other settings: `RETENTION_BATCH_SIZE` (default 5000 rows per statement,
+500 for incidents), `RETENTION_PAUSE_MS` (default 200 between batches), `RETENTION_MAX_SECONDS` (default 600; the
+run stops starting new batches after that and the next run continues). Each run writes an audit entry
+(`retention.run`, or `retention.dry_run`) with the counts.
+
+### Growth: how big the tables get
+
+Measured on MariaDB 10.11 with the current indexes: an event row costs about 400 bytes (data and indexes, with
+no `metadata`; rows that carry metadata are larger) and an audit row about 550 bytes. Every accepted event also
+writes one audit row (`event.ingest`), so each event costs about 950 bytes in total until its audit row is
+removed. Steady state at the default limits (events 90 days, ingestion audit 30 days), events plus ingestion
+audit only:
+
+| Events per second | Events per day | Events table at 90 days | Ingestion audit at 30 days | Total |
+| ---: | ---: | ---: | ---: | ---: |
+| 1 | 86,400 | 3.1 GB | 1.4 GB | 4.5 GB |
+| 10 | 864,000 | 31 GB | 14 GB | 45 GB |
+| 50 | 4.3 million | 156 GB | 71 GB | 227 GB |
+| 200 | 17.3 million | 622 GB | 285 GB | 907 GB |
+
+Choose the event limit from your disk, not the other way round. At a sustained 10 events per second, 30 days
+of events is about 10 GB. Also see the finding below: the PHP library already sends only security-relevant
+events, and the audit row per event can be switched off in a later Stage 10 step if capacity testing shows it is
+worth it.
+
+### What has and has not been verified
+
+Verified on MariaDB 10.11 (test/retention-db.spec.ts, 7 tests, plus 25 unit tests in test/retention.spec.ts):
+each rule above on seeded data, including unresolved-incident evidence, revoked-but-unexpired tokens and
+permanent blocks; a dry run predicts the real run exactly and changes nothing; a second run finds nothing; a run
+cut short and finished by the next run ends in the same state as one run; two runs at once (one skipped);
+a cleanup of about 30,000 events while a writer kept inserting (261 to 274 inserts during the run, no failures,
+slowest insert 45 ms, slowest windowed read 29 ms); an expired block's address can be blocked again. Breaking
+the evidence rule, the token grace or the lock makes the tests fail. The built command was run for real:
+dry run, real run, invalid setting (exit 1), audit trail.
+
+Not verified: MySQL 8 (MariaDB only); behaviour with more than about 100,000 rows past their limit in a single
+run on slow disks (measured rate on the sandbox: about 8,500 events per second deleted while serving live
+inserts; with a 600 second limit a backlog larger than that is simply finished by the next night's run); the
+`GET_LOCK` based lock across several API servers (verified for two concurrent runs on one server).
+These tests need a real database, so in the repository they are skipped unless `RETENTION_TEST_CONFIRM=yes` and
+`DATABASE_URL` point at a scratch database whose name starts with `ir_`.

@@ -7,6 +7,7 @@
  * administrator. Copying the sample file without editing it must therefore fail
  * loudly instead of producing a server that looks fine and is wide open.
  */
+import { loadRetentionConfig } from '../retention/retention.config';
 import { parseTrustedProxies, trustedProxyProblems } from '../common/utils/ip.util';
 export interface ConfigReport {
   errors: string[];
@@ -54,6 +55,8 @@ export function validateConfig(env: NodeJS.ProcessEnv = process.env): ConfigRepo
   if (origins.includes('*')) {
     errors.push('CORS_ORIGINS must not be "*" because the API uses credentials. List the dashboard origins explicitly.');
   }
+
+  loadRetentionConfig(env).errors.forEach((m) => errors.push(m));
 
   const trusted = parseTrustedProxies(env.TRUSTED_PROXIES);
   trustedProxyProblems(trusted).forEach((m) => errors.push(m));
