@@ -18,7 +18,7 @@ session_id('rawsessionid0123456789abcdef');
 $port    = 19080 + random_int(0, 400);
 $control = sys_get_temp_dir() . '/fake-api-control-f' . getmypid() . '.json';
 $log     = sys_get_temp_dir() . '/fake-api-log-f' . getmypid() . '.jsonl';
-$stateRoot = sys_get_temp_dir() . '/pishon-facade-' . getmypid();
+$stateRoot = sys_get_temp_dir() . '/ir-facade-' . getmypid();
 putenv("FAKE_API_CONTROL=$control");
 putenv("FAKE_API_LOG=$log");
 $server = proc_open(
@@ -40,7 +40,7 @@ $n = 0;
 $cfg = function (array $over = []) use ($base, $stateRoot, &$n): SecurityConfig {
     $n++;
     return SecurityConfig::fromEnv(array_merge([
-        'SECURITY_API_BASE' => $base, 'SECURITY_API_KEY' => 'PMS_testkey', 'SECURITY_STATE_DIR' => "$stateRoot/$n",
+        'SECURITY_API_BASE' => $base, 'SECURITY_API_KEY' => 'IRS_testkey', 'SECURITY_STATE_DIR' => "$stateRoot/$n",
         'SECURITY_API_TIMEOUT' => '1', 'SECURITY_BLOCKLIST_TTL' => '30',
     ], $over));
 };

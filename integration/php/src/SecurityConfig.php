@@ -7,7 +7,7 @@ namespace App\Security;
  * Settings, read from environment variables.
  *
  *   SECURITY_API_BASE            https://security.example.com           (required)
- *   SECURITY_API_KEY             PMS_...                                (required)
+ *   SECURITY_API_KEY             IRS_...                                (required)
  *   SECURITY_ENABLED             true | false      kill switch, default true
  *   SECURITY_MODE                monitor | enforce default monitor
  *   SECURITY_TRUSTED_PROXIES     comma list of addresses/CIDRs, or "private"
@@ -41,7 +41,7 @@ final class SecurityConfig
         $mode = strtolower($get('SECURITY_MODE', 'monitor'));
         $stateDir = $get('SECURITY_STATE_DIR');
         if ($stateDir === '') {
-            $stateDir = sys_get_temp_dir() . '/pishon-security-' . substr(hash('sha256', $base . '|' . $key), 0, 10);
+            $stateDir = sys_get_temp_dir() . '/ir-security-' . substr(hash('sha256', $base . '|' . $key), 0, 10);
         }
         return new self([
             'enabled'      => strtolower($get('SECURITY_ENABLED', 'true')) !== 'false' && $get('SECURITY_ENABLED', 'true') !== '0',

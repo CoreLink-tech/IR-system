@@ -7,7 +7,7 @@ import { APP_GUARD } from '@nestjs/core';
 import request from 'supertest';
 import { AppThrottlerGuard, apiKeyToken } from '../src/common/guards/app-throttler.guard';
 
-process.env.API_KEY_PREFIX = 'PMS_';
+process.env.API_KEY_PREFIX = 'IRS_';
 
 @Controller('t')
 class Probe {
@@ -46,23 +46,23 @@ describe('rate limiting', () => {
   });
 
   it('gives the website a far larger allowance than a person, counted per key', async () => {
-    const s = await statuses(40, () => http().post('/t/events').set('Authorization', 'Bearer PMS_aaaaaaaaaaaaaaaaaaaaaaaaaaaa1'));
+    const s = await statuses(40, () => http().post('/t/events').set('Authorization', 'Bearer IRS_aaaaaaaaaaaaaaaaaaaaaaaaaaaa1'));
     expect(s.every((x) => x === 201)).toBe(true);
   });
 
   it('still bounds a key, so a leaked key cannot flood the system', async () => {
-    const s = await statuses(60, () => http().post('/t/events').set('Authorization', 'Bearer PMS_bbbbbbbbbbbbbbbbbbbbbbbbbbbb2'));
+    const s = await statuses(60, () => http().post('/t/events').set('Authorization', 'Bearer IRS_bbbbbbbbbbbbbbbbbbbbbbbbbbbb2'));
     expect(s.filter((x) => x === 429).length).toBe(10);
   });
 
   it('counts each key separately', async () => {
-    const a = await http().post('/t/events').set('Authorization', 'Bearer PMS_cccccccccccccccccccccccccccc3');
-    const b = await http().post('/t/events').set('Authorization', 'Bearer PMS_dddddddddddddddddddddddddddd4');
+    const a = await http().post('/t/events').set('Authorization', 'Bearer IRS_cccccccccccccccccccccccccccc3');
+    const b = await http().post('/t/events').set('Authorization', 'Bearer IRS_dddddddddddddddddddddddddddd4');
     expect([a.status, b.status]).toEqual([201, 201]);
   });
 
   it('a busy website does not use up an administrator\'s allowance, and the reverse', async () => {
-    await statuses(30, () => http().post('/t/events').set('Authorization', 'Bearer PMS_eeeeeeeeeeeeeeeeeeeeeeeeeeee5'));
+    await statuses(30, () => http().post('/t/events').set('Authorization', 'Bearer IRS_eeeeeeeeeeeeeeeeeeeeeeeeeeee5'));
     const r = await http().post('/t/events').set('Authorization', 'Bearer eyJ.admin.jwt');
     expect(r.status).toBe(201);
   });
@@ -82,9 +82,9 @@ describe('rate limiting', () => {
   });
 
   it('a token that merely looks like a key prefix is not special-cased unless it starts with it', () => {
-    expect(apiKeyToken({ headers: { authorization: 'Bearer PMS_x' } })).toBe('PMS_x');
+    expect(apiKeyToken({ headers: { authorization: 'Bearer IRS_x' } })).toBe('IRS_x');
     expect(apiKeyToken({ headers: { authorization: 'Bearer eyJhbGciOi' } })).toBeNull();
-    expect(apiKeyToken({ headers: { authorization: 'PMS_x' } })).toBeNull();
+    expect(apiKeyToken({ headers: { authorization: 'IRS_x' } })).toBeNull();
     expect(apiKeyToken({ headers: {} })).toBeNull();
     expect(apiKeyToken({})).toBeNull();
   });

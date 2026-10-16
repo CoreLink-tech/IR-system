@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 
 export type TimeMode = 'local' | 'utc';
-const KEY = 'pishon-time-mode';
+const KEY = 'ir-time-mode';
 
 const Ctx = createContext<{ mode: TimeMode; toggle: () => void }>({ mode: 'local', toggle: () => {} });
 

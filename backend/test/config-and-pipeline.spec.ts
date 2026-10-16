@@ -8,11 +8,11 @@ import { JwtStrategy } from '../src/auth/jwt.strategy';
 
 const good = {
   NODE_ENV: 'production',
-  DATABASE_URL: 'mysql://pishon_user:x9f2kq81vb@db:3306/pishon_market',
+  DATABASE_URL: 'mysql://ir_user:x9f2kq81vb@db:3306/shop',
   JWT_SECRET: 'a'.repeat(20) + 'B'.repeat(20) + '1'.repeat(24),
   JWT_REFRESH_SECRET: 'z'.repeat(20) + 'Y'.repeat(20) + '9'.repeat(24),
   API_KEY_HASH_PEPPER: 'p3pp3r-value-0123456789',
-  CORS_ORIGINS: 'https://security.pishonmarket.com',
+  CORS_ORIGINS: 'https://security.example.com',
   TRUSTED_PROXIES: 'private',
 } as any;
 
@@ -28,7 +28,7 @@ describe('startup configuration check', () => {
       JWT_SECRET: 'CHANGE_ME_TO_LONG_RANDOM_STRING_AT_LEAST_64_CHARS',
       JWT_REFRESH_SECRET: 'CHANGE_ME_TO_ANOTHER_LONG_RANDOM_STRING_64_CHARS',
       API_KEY_HASH_PEPPER: 'CHANGE_ME_RANDOM_PEPPER',
-      DATABASE_URL: 'mysql://pishon_user:CHANGE_ME@localhost:3306/pishon_market',
+      DATABASE_URL: 'mysql://ir_user:CHANGE_ME@localhost:3306/shop',
     };
     const { errors } = validateConfig(sample);
     expect(errors).toHaveLength(4);
@@ -253,10 +253,10 @@ describe('AuditInterceptor', () => {
   }
 
   it('records who changed what, with the outcome and duration', async () => {
-    const { log, out } = run('POST', '/api/v1/security/block', 'ok', { type: 'USER', id: 'u1', label: 'admin@pishon.ng' });
+    const { log, out } = run('POST', '/api/v1/security/block', 'ok', { type: 'USER', id: 'u1', label: 'admin@example.com' });
     await lastValueFrom(out);
     expect(log).toHaveBeenCalledWith(expect.objectContaining({
-      actorType: 'USER', actorId: 'u1', actorLabel: 'admin@pishon.ng', action: 'POST /api/v1/security/block',
+      actorType: 'USER', actorId: 'u1', actorLabel: 'admin@example.com', action: 'POST /api/v1/security/block',
       targetId: 'i1', result: 'SUCCESS', ipAddress: '203.0.113.5', metadata: { durationMs: expect.any(Number) },
     }));
   });

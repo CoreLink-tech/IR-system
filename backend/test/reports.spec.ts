@@ -119,7 +119,7 @@ describe('incident report', () => {
     expect(text).toContain('renewed 1 more time');
     expect(text).toContain('in force until 2 Oct 2026, 15:09 UTC');
     expect(r.limitations.join(' ')).toContain('cannot confirm that the website actually rejected');
-    expect(r.sections.recommendedActions.join(' ')).toContain('Confirm the PishonMarket website is enforcing');
+    expect(r.sections.recommendedActions.join(' ')).toContain('Confirm the website is enforcing');
   });
 
   it('says no block was applied, and mentions the allowlist when relevant', () => {
@@ -136,7 +136,7 @@ describe('incident report', () => {
 
   it('reports closed incidents without asking for more work', () => {
     const r = buildIncidentReport(facts({
-      incident: { ...facts().incident, status: 'RESOLVED', resolvedAt: new Date('2026-10-02T15:00:00Z'), resolutionNotes: 'Reset affected passwords', assignee: 'ops@pishon.ng' },
+      incident: { ...facts().incident, status: 'RESOLVED', resolvedAt: new Date('2026-10-02T15:00:00Z'), resolutionNotes: 'Reset affected passwords', assignee: 'ops@example.com' },
     }));
     expect(r.sections.currentStatus).toContain('Resolved on 2 Oct 2026, 15:00 UTC');
     expect(r.sections.currentStatus).toContain('Reset affected passwords');

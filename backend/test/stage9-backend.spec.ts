@@ -112,8 +112,8 @@ describe('IncidentsService additions', () => {
   });
   it('adds a note to the timeline with the author, and changes nothing else', async () => {
     const m = make();
-    const entry = await m.svc.addNote('i1', 'Called the customer', 'u1', 'ana@pishon.ng');
-    expect(m.timeline).toEqual([{ incidentId: 'i1', action: 'note.added', actor: 'ana@pishon.ng', details: 'Called the customer' }]);
+    const entry = await m.svc.addNote('i1', 'Called the customer', 'u1', 'ana@example.com');
+    expect(m.timeline).toEqual([{ incidentId: 'i1', action: 'note.added', actor: 'ana@example.com', details: 'Called the customer' }]);
     expect(entry).toMatchObject({ action: 'note.added' });
     expect(m.audit.log).toHaveBeenCalledWith(expect.objectContaining({
       action: 'incident.note', targetId: 'i1', actorId: 'u1', result: 'SUCCESS', metadata: { length: 19 },
@@ -169,11 +169,11 @@ describe('SettingsService', () => {
     const secretEnv: any = {
       JWT_SECRET: 'SECRETVALUE1', JWT_REFRESH_SECRET: 'SECRETVALUE2', API_KEY_HASH_PEPPER: 'SECRETVALUE3',
       DATABASE_URL: 'mysql://root:SECRETVALUE4@db/x', ABUSEIPDB_API_KEY: 'SECRETVALUE5', IPINFO_TOKEN: 'SECRETVALUE6',
-      CORS_ORIGINS: 'https://dash.pishon.ng', BOOTSTRAP_ADMIN_PASSWORD: 'SECRETVALUE7',
+      CORS_ORIGINS: 'https://dash.example.com', BOOTSTRAP_ADMIN_PASSWORD: 'SECRETVALUE7',
     };
     const out = JSON.stringify(svc.operational(secretEnv));
     expect(out).not.toMatch(/SECRETVALUE/);
-    expect(out).not.toContain('dash.pishon.ng');
+    expect(out).not.toContain('dash.example.com');
   });
 });
 

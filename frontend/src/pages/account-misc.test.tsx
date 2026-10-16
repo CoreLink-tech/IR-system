@@ -54,12 +54,12 @@ describe('change password', () => {
 
 describe('runtime configuration', () => {
   it('reads /config.json and ignores bad values, trimming a trailing slash from the API address', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ apiBaseUrl: 'https://api.pishon.ng/', idleTimeoutMinutes: 10 }))));
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ apiBaseUrl: 'https://api.example.com/', idleTimeoutMinutes: 10 }))));
     await loadConfig();
-    expect(config()).toMatchObject({ apiBaseUrl: 'https://api.pishon.ng', idleTimeoutMinutes: 10 });
+    expect(config()).toMatchObject({ apiBaseUrl: 'https://api.example.com', idleTimeoutMinutes: 10 });
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ apiBaseUrl: 5, idleTimeoutMinutes: -3 }))));
     await loadConfig();
-    expect(config()).toMatchObject({ apiBaseUrl: 'https://api.pishon.ng', idleTimeoutMinutes: 10 });
+    expect(config()).toMatchObject({ apiBaseUrl: 'https://api.example.com', idleTimeoutMinutes: 10 });
   });
   it('keeps its defaults when the file is missing or the request fails', async () => {
     setConfig({ apiBaseUrl: 'http://keep.me', idleTimeoutMinutes: 7 });

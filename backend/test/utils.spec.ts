@@ -105,14 +105,14 @@ describe('crypto utilities', () => {
   beforeAll(() => { process.env.API_KEY_HASH_PEPPER = 'pepper-1'; });
 
   it('hashes deterministically and depends on the pepper', () => {
-    const a = hashApiKey('PMS_abc');
-    expect(hashApiKey('PMS_abc')).toBe(a);
+    const a = hashApiKey('IRS_abc');
+    expect(hashApiKey('IRS_abc')).toBe(a);
     process.env.API_KEY_HASH_PEPPER = 'pepper-2';
-    expect(hashApiKey('PMS_abc')).not.toBe(a);
+    expect(hashApiKey('IRS_abc')).not.toBe(a);
     process.env.API_KEY_HASH_PEPPER = 'pepper-1';
   });
   it('generates unique keys whose stored prefix leads the raw key', () => {
-    const k1 = generateApiKey('PMS_'); const k2 = generateApiKey('PMS_');
+    const k1 = generateApiKey('IRS_'); const k2 = generateApiKey('IRS_');
     expect(k1.raw).not.toBe(k2.raw);
     expect(k1.raw.startsWith(k1.prefix)).toBe(true);
     expect(k1.prefix).toHaveLength(4 + 16);

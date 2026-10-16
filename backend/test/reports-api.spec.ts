@@ -16,7 +16,7 @@ class FakeAuth {
     const req = ctx.switchToHttp().getRequest();
     const role = req.headers['x-role'];
     if (!role) throw new UnauthorizedException();
-    req.actor = { type: 'USER', id: 'u1', label: 'tester@pishon.ng', role, ip: '10.0.0.1' };
+    req.actor = { type: 'USER', id: 'u1', label: 'tester@example.com', role, ip: '10.0.0.1' };
     return true;
   }
 }
@@ -121,7 +121,7 @@ describe('Reports API', () => {
     expect(audit.log).toHaveBeenCalledTimes(1);
     expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({
       action: 'report.technical', targetType: 'report', targetId: 'INC-9',
-      actorId: 'u1', actorLabel: 'tester@pishon.ng', result: 'SUCCESS',
+      actorId: 'u1', actorLabel: 'tester@example.com', result: 'SUCCESS',
     }));
   });
 
@@ -215,9 +215,9 @@ describe('JwtAuthGuard actor attribution', () => {
     const guard = new Real({ getAllAndOverride: () => false });
     const req: any = { headers: { 'user-agent': 'jest', 'x-forwarded-for': '203.0.113.5' }, requestId: 'r1', socket: {} };
     const ctx: any = { switchToHttp: () => ({ getRequest: () => req }) };
-    const user = { id: 'u1', email: 'admin@pishon.ng', role: 'SECURITY_ADMIN' };
+    const user = { id: 'u1', email: 'admin@example.com', role: 'SECURITY_ADMIN' };
     expect(guard.handleRequest(null, user, null, ctx)).toBe(user);
-    expect(req.actor).toMatchObject({ type: 'USER', id: 'u1', label: 'admin@pishon.ng', role: 'SECURITY_ADMIN', requestId: 'r1', userAgent: 'jest' });
+    expect(req.actor).toMatchObject({ type: 'USER', id: 'u1', label: 'admin@example.com', role: 'SECURITY_ADMIN', requestId: 'r1', userAgent: 'jest' });
   });
 
   it('still rejects when the token is invalid', () => {

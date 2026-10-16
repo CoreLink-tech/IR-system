@@ -8,7 +8,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { ROLES, SCOPES } from '../common/constants';
 
 /**
- * The blocklist routes are read by two kinds of caller: the PishonMarket website
+ * The blocklist routes are read by two kinds of caller: the website
  * (API key with block:read) and administrators using the dashboard (JWT). Both use
  * the same paths, so they are served here by a single guard that accepts either.
  * These routes must not be registered anywhere else.

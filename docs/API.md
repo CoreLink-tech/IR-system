@@ -6,14 +6,14 @@ All requests JSON. All responses include X-Request-Id.
 ## Authentication
 
 Admin (JWT): Authorization: Bearer <accessToken> from POST /api/v1/auth/login.
-API Key (Pishon): Authorization: Bearer PMS_xxx. Scopes enforced per endpoint.
+API Key (website): Authorization: Bearer IRS_xxx. Scopes enforced per endpoint.
 
 Two ways to hold the long-lived refresh token:
 
 - **Non-browser clients** (scripts, the PHP library): the token is in the response body and
   is sent back in the body of refresh and logout. Unchanged since Stage 1.
 - **Browsers** (the dashboard): send `"useCookie": true` on login. The refresh token is then
-  set in an `httpOnly`, `SameSite=Strict` cookie named `pishon_rt`, scoped to `/api/v1/auth`
+  set in an `httpOnly`, `SameSite=Strict` cookie named `ir_rt`, scoped to `/api/v1/auth`
   (`Secure` in production), and is left out of the response body. Refresh and logout then
   read the cookie, and must carry `Origin` (exactly one of `CORS_ORIGINS`) and an
   `X-CSRF-Token` header. See "Cookie sessions" below.
@@ -108,7 +108,7 @@ Forces a fresh provider lookup, bypassing the 24 hour cache. Returns the merged
 intelligence and the list of active providers. Returns 404 for an invalid address.
 
 ### GET /api/v1/security/blocked-ips — JWT or API key with block:read
-Returns only active blocks. Used by Pishon middleware. The same route serves
+Returns only active blocks. Used by the website middleware. The same route serves
 administrators (any role) and the website's key (scope `block:read`).
 
 ### GET /api/v1/security/blocks/history — JWT (SUPER_ADMIN, SECURITY_ADMIN, ANALYST) or API key with block:read

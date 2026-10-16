@@ -241,6 +241,6 @@ final class Security
 
     public static function defaultLog(string $level, string $message, array $context = []): void
     {
-        error_log(sprintf('[pishon-security][%s] %s %s', $level, $message, json_encode($context, JSON_UNESCAPED_SLASHES)));
+        error_log(sprintf('[ir-security][%s] %s %s', $level, $message, json_encode($context, JSON_UNESCAPED_SLASHES)));
     }
 }

@@ -61,7 +61,7 @@ async function main() {
   shape('login', l.json, { accessToken: 'string', csrfToken: 'string', user: 'object' });
   shape('login.user', l.json.user, { id: 'string', email: 'string', role: 'string', isActive: 'boolean', mustChangePassword: 'boolean' });
   check('login keeps the refresh token out of the body', l.json.refreshToken === undefined);
-  check('login set an httpOnly SameSite=Strict cookie scoped to the auth routes', /HttpOnly/i.test(jar.get('pishon_rt')?.raw || '') && /SameSite=Strict/i.test(jar.get('pishon_rt')?.raw || '') && /Path=\/api\/v1\/auth/i.test(jar.get('pishon_rt')?.raw || ''));
+  check('login set an httpOnly SameSite=Strict cookie scoped to the auth routes', /HttpOnly/i.test(jar.get('ir_rt')?.raw || '') && /SameSite=Strict/i.test(jar.get('ir_rt')?.raw || '') && /Path=\/api\/v1\/auth/i.test(jar.get('ir_rt')?.raw || ''));
   check('the cookie is not sent to ordinary routes', cookieHeader('/incidents') === '');
   check('me role is SUPER_ADMIN (the smoke test needs it)', l.json.user.role === 'SUPER_ADMIN', l.json.user.role);
   let token = l.json.accessToken;
@@ -74,13 +74,13 @@ async function main() {
   check('refresh without a CSRF token is refused (403, csrf_invalid)', noCsrf.status === 403 && noCsrf.json?.code === 'csrf_invalid', `${noCsrf.status} ${noCsrf.json?.code}`);
   const evil = await call('POST', '/auth/refresh', { body: {}, headers: { Origin: 'https://evil.example', 'X-CSRF-Token': c1.json.csrfToken } });
   check('refresh from a foreign origin is refused (403, origin_not_allowed)', evil.status === 403 && evil.json?.code === 'origin_not_allowed');
-  const old = jar.get('pishon_rt').v;
+  const old = jar.get('ir_rt').v;
   const r1 = await call('POST', '/auth/refresh', { body: {}, headers: { 'X-CSRF-Token': c1.json.csrfToken } });
-  check('refresh with cookie + CSRF works and rotates', r1.status === 201 && jar.get('pishon_rt').v !== old);
+  check('refresh with cookie + CSRF works and rotates', r1.status === 201 && jar.get('ir_rt').v !== old);
   shape('refresh', r1.json, { accessToken: 'string', csrfToken: 'string', user: 'object' });
   token = r1.json.accessToken;
   const keep = new Map(jar);
-  const reuse = await (async () => { const saved = new Map(jar); jar.set('pishon_rt', { v: old, raw: '' }); const x = await call('POST', '/auth/refresh', { body: {}, headers: { 'X-CSRF-Token': c1.json.csrfToken } }); jar.clear(); for (const [k, v] of saved) jar.set(k, v); return x; })();
+  const reuse = await (async () => { const saved = new Map(jar); jar.set('ir_rt', { v: old, raw: '' }); const x = await call('POST', '/auth/refresh', { body: {}, headers: { 'X-CSRF-Token': c1.json.csrfToken } }); jar.clear(); for (const [k, v] of saved) jar.set(k, v); return x; })();
   check('re-using the old refresh token is theft: 401 with code refresh_token_reuse', reuse.status === 401 && reuse.json?.code === 'refresh_token_reuse', `${reuse.status} ${reuse.json?.code}`);
   const after = await call('GET', '/auth/csrf');
   const afterRefresh = await call('POST', '/auth/refresh', { body: {}, headers: { 'X-CSRF-Token': after.json?.csrfToken || 'x' } });
@@ -149,7 +149,7 @@ async function main() {
 
   // ---- api key, events, incident ----
   const key = await A('POST', '/api-keys', { body: { name: `smoke-${RUN}`, scopes: ['events:write', 'block:read'] } });
-  check('create api key', key.status === 201 && /^PMS_/.test(key.json?.apiKey || ''));
+  check('create api key', key.status === 201 && /^IRS_/.test(key.json?.apiKey || ''));
   shape('api key created', key.json, { id: 'string', name: 'string', apiKey: 'string', scopes: 'array' });
   const keys = await A('GET', '/api-keys'); check('api keys list 200', keys.status === 200 && T.array(keys.json));
   for (const k of keys.json.slice(0, 3)) { shape('api key row', k, { id: 'string', name: 'string', keyPrefix: 'string', scopes: 'string', isActive: 'boolean' }); check('key list never shows a hash or full key', !('keyHash' in k) && !('apiKey' in k)); }
@@ -239,7 +239,7 @@ async function main() {
   await A('PATCH', `/auth/users/${viewer.json.id}`, { body: { isActive: false } });
   const out = await (async () => { const cs = await call('GET', '/auth/csrf'); return call('POST', '/auth/logout', { body: {}, headers: { 'X-CSRF-Token': cs.json?.csrfToken ?? 'x' } }); })();
   check('sign out', out.status === 201 || out.status === 200);
-  check('sign-out cleared the cookie', !jar.has('pishon_rt'));
+  check('sign-out cleared the cookie', !jar.has('ir_rt'));
 }
 
 main().catch((e) => { failed++; fails.push(`aborted: ${e.message}`); }).finally(() => {

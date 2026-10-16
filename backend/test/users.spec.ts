@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, NotFoundException } from '@nest
 import * as bcrypt from 'bcryptjs';
 import { UsersService } from '../src/auth/users.service';
 
-const actor = { type: 'USER' as const, id: 'root', label: 'root@pishon.ng', ip: '203.0.113.5', userAgent: 'jest', requestId: 'r1' };
+const actor = { type: 'USER' as const, id: 'root', label: 'root@example.com', ip: '203.0.113.5', userAgent: 'jest', requestId: 'r1' };
 
 function make(users: any[]) {
   const tokens: any[] = users.map((u) => ({ userId: u.id, revokedAt: null }));
@@ -25,7 +25,7 @@ function make(users: any[]) {
   const audit = { log: jest.fn(async () => undefined) };
   return { svc: new UsersService(prisma, audit as any), prisma, audit, tokens, users };
 }
-const user = (id: string, role: string, over: any = {}) => ({ id, email: `${id}@pishon.ng`, name: id, role, isActive: true, mustChangePassword: false, passwordHash: 'HASH', ...over });
+const user = (id: string, role: string, over: any = {}) => ({ id, email: `${id}@example.com`, name: id, role, isActive: true, mustChangePassword: false, passwordHash: 'HASH', ...over });
 
 describe('UsersService.list and assignable', () => {
   it('never selects the password hash', async () => {
@@ -50,7 +50,7 @@ describe('UsersService.update', () => {
     expect(JSON.stringify(r)).not.toContain('HASH');
     expect(m.audit.log).toHaveBeenCalledWith(expect.objectContaining({
       action: 'user.update', targetId: 'a', result: 'SUCCESS',
-      metadata: { email: 'a@pishon.ng', old: { role: 'ANALYST', isActive: true }, new: { role: 'SECURITY_ADMIN', isActive: true } },
+      metadata: { email: 'a@example.com', old: { role: 'ANALYST', isActive: true }, new: { role: 'SECURITY_ADMIN', isActive: true } },
     }));
   });
   it('runs the check and the change in one serializable transaction', async () => {

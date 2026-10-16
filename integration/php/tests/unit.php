@@ -37,7 +37,7 @@ function same($a, $b): bool { return $a === $b; }
 function show($v): string { return json_encode($v, JSON_UNESCAPED_SLASHES); }
 function tmpdir(): string
 {
-    $d = sys_get_temp_dir() . '/pishon-test-' . bin2hex(random_bytes(5));
+    $d = sys_get_temp_dir() . '/ir-test-' . bin2hex(random_bytes(5));
     return $d;
 }
 function rrmdir(string $d): void
@@ -437,7 +437,7 @@ $c = SecurityConfig::fromEnv([]);
 check('defaults are safe: monitor mode, enabled, no trusted proxies', $c->get('mode') === 'monitor' && $c->get('enabled') === true && $c->get('trusted') === [] && $c->get('ttl') === 30 && $c->get('breakerOpen') === 30);
 check('the breaker pause is configurable and never below one second', SecurityConfig::fromEnv(['SECURITY_BREAKER_OPEN' => '5'])->get('breakerOpen') === 5 && SecurityConfig::fromEnv(['SECURITY_BREAKER_OPEN' => '0'])->get('breakerOpen') === 1);
 check('missing base and key are reported', count($c->problems()) === 2);
-$c = SecurityConfig::fromEnv(['SECURITY_API_BASE' => 'https://sec.example.com/', 'SECURITY_API_KEY' => 'PMS_x', 'SECURITY_MODE' => 'ENFORCE', 'SECURITY_TRUSTED_PROXIES' => ' 10.0.0.1 , private ,, 173.245.48.0/20', 'SECURITY_BLOCKLIST_TTL' => '60', 'SECURITY_API_TIMEOUT' => '0.5']);
+$c = SecurityConfig::fromEnv(['SECURITY_API_BASE' => 'https://sec.example.com/', 'SECURITY_API_KEY' => 'IRS_x', 'SECURITY_MODE' => 'ENFORCE', 'SECURITY_TRUSTED_PROXIES' => ' 10.0.0.1 , private ,, 173.245.48.0/20', 'SECURITY_BLOCKLIST_TTL' => '60', 'SECURITY_API_TIMEOUT' => '0.5']);
 check('a full configuration is read and tidied', $c->problems() === [] && $c->get('base') === 'https://sec.example.com' && $c->get('mode') === 'enforce' && $c->get('trusted') === ['10.0.0.1', 'private', '173.245.48.0/20'] && $c->get('ttl') === 60 && $c->get('timeout') === 0.5);
 check('any mode other than enforce is monitor', SecurityConfig::fromEnv(['SECURITY_MODE' => 'block-everything'])->get('mode') === 'monitor');
 check('the kill switch accepts false and 0', SecurityConfig::fromEnv(['SECURITY_ENABLED' => 'false'])->get('enabled') === false && SecurityConfig::fromEnv(['SECURITY_ENABLED' => '0'])->get('enabled') === false && SecurityConfig::fromEnv(['SECURITY_ENABLED' => 'true'])->get('enabled') === true);

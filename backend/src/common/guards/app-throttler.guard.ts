@@ -6,7 +6,7 @@ import { extractIp } from '../utils/ip.util';
  * Rate limiting with two separate budgets.
  *
  *   "ip"   administrators and anonymous callers, counted per client address.
- *   "key"  the PishonMarket website, counted per API key.
+ *   "key"  the website, counted per API key.
  *
  * The website sends every visitor's events from ONE server address. Counting by address
  * would give the whole shop the same small allowance as a single person, and events
@@ -51,5 +51,5 @@ export function apiKeyToken(req: { headers?: Record<string, any> }): string | nu
   const header = req.headers?.['authorization'];
   if (typeof header !== 'string' || !header.startsWith('Bearer ')) return null;
   const token = header.substring(7).trim();
-  return token.startsWith(process.env.API_KEY_PREFIX || 'PMS_') ? token : null;
+  return token.startsWith(process.env.API_KEY_PREFIX || 'IRS_') ? token : null;
 }

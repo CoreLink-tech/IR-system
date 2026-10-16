@@ -14,7 +14,7 @@ import { isAllowedOrigin } from '../common/utils/origins';
  *
  * The cookie is scoped to the auth routes, so it is not sent with ordinary API calls.
  */
-export const REFRESH_COOKIE = 'pishon_rt';
+export const REFRESH_COOKIE = 'ir_rt';
 export const CSRF_HEADER = 'x-csrf-token';
 const COOKIE_PATH = '/api/v1/auth';
 

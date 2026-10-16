@@ -6,7 +6,7 @@ import { ApiKeyGuard } from './api-key.guard';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
 /**
- * For the few routes that both an administrator (JWT) and the PishonMarket website
+ * For the few routes that both an administrator (JWT) and the website
  * (API key) must be able to call. The kind of credential is decided by the token
  * prefix, then the matching rule applies:
  *
@@ -27,7 +27,7 @@ export class JwtOrApiKeyGuard implements CanActivate {
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const req = ctx.switchToHttp().getRequest();
     const header = req.headers['authorization'];
-    const prefix = process.env.API_KEY_PREFIX || 'PMS_';
+    const prefix = process.env.API_KEY_PREFIX || 'IRS_';
     const token = typeof header === 'string' && header.startsWith('Bearer ') ? header.substring(7).trim() : '';
 
     if (token.startsWith(prefix)) {

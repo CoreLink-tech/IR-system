@@ -43,7 +43,7 @@ test.describe('what the browser enforces', () => {
 
   test('a redirect target after sign-in can never leave the site', async ({ page }) => {
     await page.goto('/sign-in');
-    await page.evaluate(() => sessionStorage.setItem('pishon-return-to', '//evil.example/steal'));
+    await page.evaluate(() => sessionStorage.setItem('ir-return-to', '//evil.example/steal'));
     const a = loadAccounts().VIEWER;
     await page.getByLabel('Email').fill(a.email); await page.getByLabel('Password').fill(a.password);
     await page.getByRole('button', { name: 'Sign in' }).click();

@@ -114,7 +114,7 @@ export function buildExecutiveSummary(p: PeriodFacts): ExecutiveSummary {
     : `Compared with the previous period of the same length: ${compare('incidents', total, p.previous.incidents)}; ${compare('events', p.events, p.previous.events)}.`;
 
   const limitations: string[] = [
-    'Figures cover only what the PishonMarket website reports to the security system.',
+    'Figures cover only what the website reports to the security system.',
     'Incident counts include only incidents opened during this period.',
   ];
   if (p.intelProviders.length === 0) {

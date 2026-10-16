@@ -46,7 +46,7 @@ export function validateConfig(env: NodeJS.ProcessEnv = process.env): ConfigRepo
     errors.push('DATABASE_URL still contains the placeholder database password.');
   }
 
-  if (!(env.API_KEY_PREFIX ?? 'PMS_').trim()) {
+  if (!(env.API_KEY_PREFIX ?? 'IRS_').trim()) {
     errors.push('API_KEY_PREFIX must not be empty. Key detection relies on it.');
   }
 

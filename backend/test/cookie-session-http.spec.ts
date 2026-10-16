@@ -13,10 +13,10 @@ import { AllExceptionsFilter } from '../src/common/filters/http-exception.filter
 
 process.env.JWT_SECRET = 'access-secret-for-tests-0123456789abcdef0123456789abcdef';
 process.env.JWT_REFRESH_SECRET = 'refresh-secret-for-tests-fedcba9876543210fedcba9876543210';
-process.env.CORS_ORIGINS = 'https://dash.pishon.ng';
+process.env.CORS_ORIGINS = 'https://dash.example.com';
 process.env.NODE_ENV = 'production';
 
-const ORIGIN = 'https://dash.pishon.ng';
+const ORIGIN = 'https://dash.example.com';
 
 /** The real AuthService and controller, with an in-memory database. */
 describe('browser cookie session (real AuthService over HTTP)', () => {
@@ -25,7 +25,7 @@ describe('browser cookie session (real AuthService over HTTP)', () => {
 
   beforeEach(async () => {
     tokens = []; audit = []; seq = 0;
-    users = [{ id: 'u1', email: 'admin@pishon.ng', passwordHash: await bcrypt.hash('CorrectHorse!1', 4), role: 'SECURITY_ADMIN', isActive: true, name: 'Admin', mustChangePassword: false }];
+    users = [{ id: 'u1', email: 'admin@example.com', passwordHash: await bcrypt.hash('CorrectHorse!1', 4), role: 'SECURITY_ADMIN', isActive: true, name: 'Admin', mustChangePassword: false }];
     const prisma: any = {
       securityUser: {
         findUnique: async ({ where }: any) => users.find((u) => (where.email ? u.email === where.email : u.id === where.id)) ?? null,
@@ -58,9 +58,9 @@ describe('browser cookie session (real AuthService over HTTP)', () => {
   afterEach(() => app.close());
 
   const http = () => request(app.getHttpServer());
-  const cookieOf = (res: request.Response) => ((res.headers['set-cookie'] as unknown as string[]) || []).find((c) => c.startsWith('pishon_rt='));
+  const cookieOf = (res: request.Response) => ((res.headers['set-cookie'] as unknown as string[]) || []).find((c) => c.startsWith('ir_rt='));
   const pair = (c?: string) => (c || '').split(';')[0];
-  const login = (extra: any = {}) => http().post('/api/v1/auth/login').send({ email: 'admin@pishon.ng', password: 'CorrectHorse!1', useCookie: true, ...extra });
+  const login = (extra: any = {}) => http().post('/api/v1/auth/login').send({ email: 'admin@example.com', password: 'CorrectHorse!1', useCookie: true, ...extra });
 
   it('signs in with the token in an httpOnly cookie and never in the body', async () => {
     const res = await login().expect(201);
@@ -116,7 +116,7 @@ describe('browser cookie session (real AuthService over HTTP)', () => {
     const ok = await http().get('/api/v1/auth/csrf').set('Cookie', pair(cookieOf(first))).expect(200);
     expect(ok.body.csrfToken).toBe(first.body.csrfToken);
     expect((await http().get('/api/v1/auth/csrf').expect(401)).body.code).toBe('no_session');
-    const forged = await http().get('/api/v1/auth/csrf').set('Cookie', 'pishon_rt=not.a.jwt').expect(401);
+    const forged = await http().get('/api/v1/auth/csrf').set('Cookie', 'ir_rt=not.a.jwt').expect(401);
     expect(forged.body.code).toBe('no_session');
   });
 
@@ -150,14 +150,14 @@ describe('browser cookie session (real AuthService over HTTP)', () => {
 
   it('does not reveal which part of a failed sign-in was wrong, and sets no cookie', async () => {
     const a = await login({ password: 'WrongPassword!1' }).expect(401);
-    const b = await login({ email: 'nobody@pishon.ng' }).expect(401);
+    const b = await login({ email: 'nobody@example.com' }).expect(401);
     expect(a.body.message).toBe(b.body.message);
     expect(cookieOf(a)).toBeUndefined(); expect(cookieOf(b)).toBeUndefined();
   });
 
   it('REGRESSION cookie plus body: a token in the body wins, so an old client behaves as before', async () => {
     const first = await login({ useCookie: undefined }).expect(201);
-    const res = await http().post('/api/v1/auth/refresh').set('Cookie', 'pishon_rt=garbage').send({ refreshToken: first.body.refreshToken }).expect(201);
+    const res = await http().post('/api/v1/auth/refresh').set('Cookie', 'ir_rt=garbage').send({ refreshToken: first.body.refreshToken }).expect(201);
     expect(res.body.refreshToken).toBeTruthy();
   });
 });

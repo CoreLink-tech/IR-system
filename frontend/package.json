@@ -1,8 +1,8 @@
 {
-  "name": "pishon-security-dashboard",
+  "name": "security-dashboard",
   "version": "1.0.0",
   "private": true,
-  "description": "Web dashboard for the Pishon Security API. Shows what the API returns; makes no security decisions.",
+  "description": "Web dashboard for the Security API. Shows what the API returns; makes no security decisions.",
   "type": "module",
   "engines": {
     "node": ">=18"

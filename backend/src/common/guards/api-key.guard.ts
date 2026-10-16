@@ -14,7 +14,7 @@ export class ApiKeyGuard implements CanActivate {
       throw new UnauthorizedException('Missing or malformed Authorization header');
     }
     const raw = header.substring(7).trim();
-    if (!raw.startsWith(process.env.API_KEY_PREFIX || 'PMS_')) {
+    if (!raw.startsWith(process.env.API_KEY_PREFIX || 'IRS_')) {
       throw new UnauthorizedException('Invalid API key prefix');
     }
     const key = await this.apiKeys.verifyApiKey(raw);

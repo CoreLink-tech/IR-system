@@ -77,6 +77,6 @@ logins.
 - State lives in `SECURITY_STATE_DIR`: the blocklist cache, breaker state and event
   queue. It is safe to delete; the library rebuilds it.
 - `SECURITY_ENABLED=false` is the kill switch.
-- Watch the error log for `[pishon-security]` lines. The ones to alert on:
+- Watch the error log for `[ir-security]` lines. The ones to alert on:
   `security_api_key_rejected`, `security_blocklist_refresh_failed` repeating,
   `security_spool_full` and `security_state_dir_unusable`.

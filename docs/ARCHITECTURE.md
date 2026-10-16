@@ -2,14 +2,14 @@
 
 ## Overview
 
-    Pishon Market (PHP) --> Security API (NestJS) --> Pishon DB
+    Website (PHP) --> Security API (NestJS) --> Website DB
                                                          (security_* tables)
     Web Dashboard --JWT--> Security API
 
 ## Layers
 
 ### Ingestion
-POST /api/v1/events accepts structured events from Pishon.
+POST /api/v1/events accepts structured events from the website.
 1. Validates DTO (class-validator).
 2. Authenticates API key, checks scope events:write.
 3. Normalizes IP, sanitizes metadata (recursive redaction).
@@ -41,7 +41,7 @@ Detection never depends on enrichment: if every provider is down the event is st
 
 ### Blocking & Enforcement
 Platform stores blocks in security_ip_blocks. DOES NOT enforce.
-Pishon's middleware calls GET /api/v1/security/blocked-ips and enforces.
+The website's middleware calls GET /api/v1/security/blocked-ips and enforces.
 Allowlist takes precedence. Temporary blocks expire lazily at read time.
 
 ### Audit
@@ -49,16 +49,16 @@ AuditInterceptor writes to security_audit_logs on every security-sensitive write
 Direct service calls (DetectionService, BlockingService) also log directly.
 
 ## Database Strategy
-Only security_* tables are created. No FK to Pishon business tables.
+Only security_* tables are created. No FK to the website's business tables.
 
 ## Data Flow Example — Brute Force
-1. Pishon sends POST /api/v1/events (login_failed).
+1. The website sends POST /api/v1/events (login_failed).
 2. Event stored; DetectionService runs.
 3. brute_force_login matches (>= 5 fails in 10 min).
 4. Risk crosses AUTO_BLOCK_MIN_RISK.
 5. Incident + timeline entry created.
 6. BlockingService creates temporary block.
-7. Pishon's next poll of /blocked-ips includes this IP.
-8. Pishon middleware rejects subsequent requests.
+7. The website's next poll of /blocked-ips includes this IP.
+8. The website middleware rejects subsequent requests.
 
 See docs/DETECTION.md for the full rule list, incident grouping and escalation, and blocking behavior.

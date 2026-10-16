@@ -37,7 +37,7 @@ for ($i = 0; $i < 50; $i++) {
 $passed = 0;
 $failed = 0;
 $base = "http://127.0.0.1:$port";
-const KEY = 'PMS_0123456789abcdefSECRETSECRETSECRET';
+const KEY = 'IRS_0123456789abcdefSECRETSECRETSECRET';
 
 function script(array $c): void { global $control, $log; file_put_contents($control, json_encode($c)); @unlink($log); }
 function requests(): array {
@@ -68,7 +68,7 @@ check('returns the decoded response', $r === ['id' => 'e1', 'riskScore' => 5]);
 check('POSTs to /api/v1/events', ($req['method'] ?? '') === 'POST' && ($req['path'] ?? '') === '/api/v1/events');
 check('authenticates with the key as a bearer token', ($req['headers']['authorization'] ?? '') === 'Bearer ' . KEY);
 check('sends JSON', ($req['headers']['content-type'] ?? '') === 'application/json');
-check('identifies itself and sends a request id header', str_starts_with($req['headers']['user-agent'] ?? '', 'PishonSecurityClient') && strlen($req['headers']['x-request-id'] ?? '') === 24);
+check('identifies itself and sends a request id header', str_starts_with($req['headers']['user-agent'] ?? '', 'SecurityClient') && strlen($req['headers']['x-request-id'] ?? '') === 24);
 check('sends the event type, severity and fields', ($body['event_type'] ?? '') === 'login_failed' && ($body['severity'] ?? '') === 'MEDIUM' && ($body['ip_address'] ?? '') === '198.51.100.7' && ($body['user_id'] ?? '') === 'u1');
 check('adds a request id to the event', strlen($body['request_id'] ?? '') === 24);
 check('adds a UTC ISO 8601 timestamp that is current', isset($body['timestamp']) && abs(strtotime($body['timestamp']) - time()) < 5 && str_ends_with($body['timestamp'], '+00:00'));
@@ -142,7 +142,7 @@ check('returns an empty list when the API is down', client($base, $logs, 2.0, 0)
 $logs = []; script(['status' => 500]); client($base, $logs, 2.0, 1)->event('login_failed', 'LOW');
 script(['status' => 403]); client($base, $logs, 2.0, 1)->event('login_failed', 'LOW');
 client('http://127.0.0.1:1', $logs, 0.3, 0)->event('login_failed', 'LOW');
-check('never writes the API key to the log', !str_contains(json_encode($logs), 'SECRETSECRET') && !str_contains(json_encode($logs), 'PMS_'));
+check('never writes the API key to the log', !str_contains(json_encode($logs), 'SECRETSECRET') && !str_contains(json_encode($logs), 'IRS_'));
 
 // 12. Configuration
 $logs = []; script([]);

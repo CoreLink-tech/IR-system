@@ -132,7 +132,7 @@ describe('remembering where the person was', () => {
     expect(S.safePath('/admin/rules?x=1#y')).toBe('/admin/rules?x=1#y');
   });
   it('ignores a tampered saved value', () => {
-    sessionStorage.setItem('pishon-return-to', '//evil.test/steal');
+    sessionStorage.setItem('ir-return-to', '//evil.test/steal');
     expect(S.takePlace()).toBe('/');
   });
 });
@@ -178,8 +178,8 @@ describe('several tabs, one session', () => {
     vi.stubGlobal('navigator', { ...navigator, locks });
     await S.signIn('a@b.ng', 'a-long-password-1');
     await S.refresh('forced');
-    expect(locks.request).toHaveBeenCalledWith('pishon-refresh', expect.any(Function));
-    expect(order).toEqual(['lock:pishon-refresh', 'unlock']);
+    expect(locks.request).toHaveBeenCalledWith('ir-refresh', expect.any(Function));
+    expect(order).toEqual(['lock:ir-refresh', 'unlock']);
     vi.unstubAllGlobals();
   });
 });

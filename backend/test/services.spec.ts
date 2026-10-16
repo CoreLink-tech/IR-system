@@ -8,7 +8,7 @@ import { StatisticsService } from '../src/statistics/statistics.service';
 const audit = () => ({ log: jest.fn(async () => undefined) });
 
 describe('IncidentsService', () => {
-  function make(incident: any | null = { id: 'i1', status: 'OPEN', resolvedAt: null }, user: any | null = { id: 'u2', email: 'ops@pishon.ng' }) {
+  function make(incident: any | null = { id: 'i1', status: 'OPEN', resolvedAt: null }, user: any | null = { id: 'u2', email: 'ops@example.com' }) {
     const timeline: any[] = []; const updates: any[] = []; const seen: any = {};
     const prisma: any = {
       securityIncident: {
@@ -50,7 +50,7 @@ describe('IncidentsService', () => {
   it('stamps the resolution time when resolving or closing as a false alarm, with notes', async () => {
     for (const status of ['RESOLVED', 'FALSE_POSITIVE']) {
       const m = make();
-      await m.svc.updateStatus('i1', status, 'Reset passwords', 'u1', 'admin@pishon.ng');
+      await m.svc.updateStatus('i1', status, 'Reset passwords', 'u1', 'admin@example.com');
       expect(m.updates[0].data).toMatchObject({ status, resolutionNotes: 'Reset passwords' });
       expect(m.updates[0].data.resolvedAt).toBeInstanceOf(Date);
     }
@@ -71,8 +71,8 @@ describe('IncidentsService', () => {
 
   it('records who changed the status, in the timeline and the audit log', async () => {
     const m = make();
-    await m.svc.updateStatus('i1', 'CONTAINED', 'Blocked at the firewall', 'u1', 'admin@pishon.ng');
-    expect(m.timeline[0]).toEqual({ incidentId: 'i1', action: 'status.CONTAINED', actor: 'admin@pishon.ng', details: 'Blocked at the firewall' });
+    await m.svc.updateStatus('i1', 'CONTAINED', 'Blocked at the firewall', 'u1', 'admin@example.com');
+    expect(m.timeline[0]).toEqual({ incidentId: 'i1', action: 'status.CONTAINED', actor: 'admin@example.com', details: 'Blocked at the firewall' });
     expect(m.audit.log).toHaveBeenCalledWith(expect.objectContaining({
       actorId: 'u1', action: 'incident.update', targetId: 'i1', metadata: { status: 'CONTAINED' },
     }));
@@ -80,9 +80,9 @@ describe('IncidentsService', () => {
 
   it('assigns to an existing user and records it', async () => {
     const m = make();
-    await m.svc.assign('i1', 'u2', 'u1', 'admin@pishon.ng');
+    await m.svc.assign('i1', 'u2', 'u1', 'admin@example.com');
     expect(m.updates[0].data).toEqual({ assignedTo: 'u2' });
-    expect(m.timeline[0]).toMatchObject({ action: 'assigned', details: 'Assigned to ops@pishon.ng' });
+    expect(m.timeline[0]).toMatchObject({ action: 'assigned', details: 'Assigned to ops@example.com' });
     expect(m.audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'incident.assign' }));
   });
 

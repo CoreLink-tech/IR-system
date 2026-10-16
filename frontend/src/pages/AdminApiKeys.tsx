@@ -41,7 +41,7 @@ function CreateDialog({ onClose, onCreated }: { onClose: () => void; onCreated: 
   const [error, setError] = useState<unknown>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const go = async () => {
-    if (!name.trim()) return setProblem('Give the key a name, such as "PishonMarket website".');
+    if (!name.trim()) return setProblem('Give the key a name, such as "Main website".');
     if (scopes.length === 0) return setProblem('Choose at least one thing the key may do.');
     setProblem(null); setBusy(true); setError(null);
     try { onCreated(await createApiKey({ name: name.trim(), scopes, ...(expiry ? { expiresInDays: Number(expiry) } : {}) })); onClose(); } catch (e) { setError(e); } finally { setBusy(false); }

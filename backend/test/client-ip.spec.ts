@@ -224,7 +224,7 @@ describe('over HTTP: the login record uses the one address function', () => {
   let app: INestApplication; let audit: any[];
   beforeEach(async () => {
     audit = [];
-    const users = [{ id: 'u1', email: 'admin@pishon.ng', passwordHash: await bcrypt.hash('CorrectHorse!1', 4), role: 'SECURITY_ADMIN', isActive: true, name: 'Admin', mustChangePassword: false }];
+    const users = [{ id: 'u1', email: 'admin@example.com', passwordHash: await bcrypt.hash('CorrectHorse!1', 4), role: 'SECURITY_ADMIN', isActive: true, name: 'Admin', mustChangePassword: false }];
     const tokens: any[] = []; let seq = 0;
     const prisma: any = {
       securityUser: {
@@ -247,7 +247,7 @@ describe('over HTTP: the login record uses the one address function', () => {
     await app.init();
   });
   afterEach(() => app.close());
-  const login = (pw: string, xff: string) => request(app.getHttpServer()).post('/api/v1/auth/login').set('X-Forwarded-For', xff).send({ email: 'admin@pishon.ng', password: pw });
+  const login = (pw: string, xff: string) => request(app.getHttpServer()).post('/api/v1/auth/login').set('X-Forwarded-For', xff).send({ email: 'admin@example.com', password: pw });
 
   it('failed and successful sign-ins record the connection address when the header is forged', async () => {
     await login('wrong-password-1', '9.9.9.9').expect(401);

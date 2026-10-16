@@ -5,7 +5,7 @@ import type {
 
 const iso = (minAgo: number) => new Date(Date.now() - minAgo * 60_000).toISOString();
 
-export const user = (role: Role, over: Partial<User> = {}): User => ({ id: `u-${role}`, email: `${role.toLowerCase()}@pishon.ng`, name: `${role} Person`, role, isActive: true, mustChangePassword: false, ...over });
+export const user = (role: Role, over: Partial<User> = {}): User => ({ id: `u-${role}`, email: `${role.toLowerCase()}@example.com`, name: `${role} Person`, role, isActive: true, mustChangePassword: false, ...over });
 
 export const incident = (over: Partial<Incident> = {}): Incident => ({
   id: 'inc1', incidentId: 'INC-20261007-00001ABCD', title: 'Repeated failed sign-ins from one address', description: 'x',
@@ -75,7 +75,7 @@ export const ipDetail = (over: Partial<IpDetail> = {}): IpDetail => ({ ip: ipRec
 export const activeBlock = (over: Partial<ActiveBlock> = {}): ActiveBlock => ({ ipAddress: '198.51.100.7', reason: 'Automatic: critical risk', expiresAt: new Date(Date.now() + 40 * 60_000).toISOString(), permanent: false, automatic: true, createdAt: iso(20), ...over });
 
 export const userRow = (role: Role, over: Partial<UserRow> = {}): UserRow => ({ ...user(role), lastLoginAt: iso(30), createdAt: iso(9999), ...over });
-export const apiKey = (over: Partial<ApiKeyRow> = {}): ApiKeyRow => ({ id: 'k1', name: 'PishonMarket website', keyPrefix: 'PMS_ab12cd34', scopes: 'events:write,block:read', isActive: true, expiresAt: null, lastUsedAt: iso(2), revokedAt: null, createdAt: iso(5000), ...over });
+export const apiKey = (over: Partial<ApiKeyRow> = {}): ApiKeyRow => ({ id: 'k1', name: 'Main website', keyPrefix: 'IRS_ab12cd34', scopes: 'events:write,block:read', isActive: true, expiresAt: null, lastUsedAt: iso(2), revokedAt: null, createdAt: iso(5000), ...over });
 
 export const rule = (over: Partial<RuleRow> = {}): RuleRow => ({
   code: 'brute_force_login', title: 'Password guessing', name: 'Brute-force login', description: 'Many failed sign-ins from one address.', whyItMatters: 'This is how accounts get taken over.',
@@ -86,7 +86,7 @@ export const rule = (over: Partial<RuleRow> = {}): RuleRow => ({
 });
 
 export const audit = (over: Partial<AuditRow> = {}): AuditRow => ({
-  id: 'a1', requestId: 'req-1', actorType: 'USER', actorId: 'u1', actorLabel: 'sec@pishon.ng', action: 'ip.block', targetType: 'ip', targetId: '198.51.100.7',
+  id: 'a1', requestId: 'req-1', actorType: 'USER', actorId: 'u1', actorLabel: 'sec@example.com', action: 'ip.block', targetType: 'ip', targetId: '198.51.100.7',
   result: 'SUCCESS', metadata: { reason: 'attack' }, ipAddress: '203.0.113.5', createdAt: iso(10), ...over,
 });
 

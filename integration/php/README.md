@@ -1,6 +1,6 @@
-# PishonMarket PHP integration
+# PHP integration
 
-A small library that connects the PishonMarket website to the Security API. It does
+A small library that connects a PHP website to the Security API. It does
 two jobs:
 
 1. **Reports security events** (failed logins, password resets, payment problems and
@@ -17,7 +17,7 @@ delayed. Every call is safe to make at any time and never throws.
 
 ## 1. Install
 
-Copy this folder to the web server, for example `/var/www/pishon/security/`.
+Copy this folder to the web server, for example `/var/www/ir/security/`.
 
 Create an API key in the Security dashboard (or with `POST /api/v1/api-keys`) with
 exactly two scopes, `events:write` and `block:read`, and nothing else.
@@ -71,7 +71,7 @@ At the very top of your front controller (`index.php`), or for every page by set
 `auto_prepend_file` in `php.ini` or `.user.ini`:
 
 ```php
-require '/var/www/pishon/security/bootstrap.php';
+require '/var/www/ir/security/bootstrap.php';
 ```
 
 This works out the visitor's address, checks the blocklist and, in `enforce` mode,
@@ -146,7 +146,7 @@ To switch it all off instantly, set `SECURITY_ENABLED=false`. Nothing else chang
 | State folder not private or not writable | Not used, an error is logged, and the library carries on without shared state. |
 | Private or loopback visitor | Never blocked, even if the blocklist contains it. |
 
-Log lines go to PHP's `error_log` and start with `[pishon-security]`. Pass your own
+Log lines go to PHP's `error_log` and start with `[ir-security]`. Pass your own
 logger to `Security::boot($config, null, $logger)` to send them elsewhere.
 
 ## Files

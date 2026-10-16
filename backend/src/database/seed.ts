@@ -7,7 +7,7 @@ import { BUILT_IN_RULES } from '../detection/rules';
 async function main() {
   const prisma = new PrismaClient();
 
-  const email = (process.env.BOOTSTRAP_ADMIN_EMAIL || 'admin@pishon.local').toLowerCase();
+  const email = (process.env.BOOTSTRAP_ADMIN_EMAIL || 'admin@example.local').toLowerCase();
   const DEFAULT_PASSWORD = 'ChangeMeStrong!123';
   const password = process.env.BOOTSTRAP_ADMIN_PASSWORD || DEFAULT_PASSWORD;
   // The default is public. It is tolerated on a developer machine, never in production.

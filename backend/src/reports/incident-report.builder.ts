@@ -149,7 +149,7 @@ function recommendedActions(f: IncidentFacts): string[] {
     out.push('Consider blocking the source address.');
   }
   if (inForce) {
-    out.push('Confirm the PishonMarket website is enforcing the blocklist. This system records blocks but cannot see whether the website applied them.');
+    out.push('Confirm the website is enforcing the blocklist. This system records blocks but cannot see whether the website applied them.');
   }
   if (i.status === 'OPEN') out.push('Mark the incident as under investigation once someone starts looking at it.');
   return Array.from(new Set(out));

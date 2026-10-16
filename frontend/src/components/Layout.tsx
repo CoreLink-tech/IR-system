@@ -79,7 +79,7 @@ export function Layout({ children }: { children?: ReactNode }) {
       <a className="skip-link" href="#main">Skip to content</a>
       <Announcer />
       <header className="topbar">
-        <Link to="/" className="brand"><span style={{ width: 24, display: 'inline-flex' }}><IconShield /></span> Pishon Security</Link>
+        <Link to="/" className="brand"><span style={{ width: 24, display: 'inline-flex' }}><IconShield /></span> Security Dashboard</Link>
         <PostureChip posture={posture.data?.posture} />
         <span className="spacer" />
         <TimeToggle />

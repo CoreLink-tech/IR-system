@@ -13,6 +13,6 @@ export class HealthController {
   @Get()
   health(@Res({ passthrough: true }) res: Response) {
     res.setHeader('Cache-Control', 'no-store');
-    return { status: 'ok', service: 'pishon-security-api', version: API_VERSION, time: new Date().toISOString() };
+    return { status: 'ok', service: 'security-api', version: API_VERSION, time: new Date().toISOString() };
   }
 }

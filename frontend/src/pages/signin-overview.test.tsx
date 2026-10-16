@@ -10,11 +10,11 @@ const signedOutApp = (routes: Record<string, any> = {}) => renderApp({ role: 'VI
 describe('sign in', () => {
   it('signs in with email and password and lands on the overview', async () => {
     const { net } = await signedOutApp();
-    await userEvent.type(await screen.findByLabelText('Email'), ' person@pishon.ng ');
+    await userEvent.type(await screen.findByLabelText('Email'), ' person@example.com ');
     await userEvent.type(screen.getByLabelText('Password'), 'a-long-password-1');
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
     expect(await screen.findByRole('heading', { name: 'Overview' })).toBeInTheDocument();
-    expect(net.last('POST /auth/login')!.body).toMatchObject({ email: 'person@pishon.ng', useCookie: true });
+    expect(net.last('POST /auth/login')!.body).toMatchObject({ email: 'person@example.com', useCookie: true });
   });
   it('returns the person to the page they were on', async () => {
     S.rememberPlace('/incidents?status=OPEN');
@@ -26,7 +26,7 @@ describe('sign in', () => {
   });
   it('gives the same message for a wrong email and a wrong password, and clears the password', async () => {
     await signedOutApp({ 'POST /auth/login': { status: 401, body: { statusCode: 401, message: 'Invalid credentials' } } });
-    await userEvent.type(await screen.findByLabelText('Email'), 'nobody@pishon.ng');
+    await userEvent.type(await screen.findByLabelText('Email'), 'nobody@example.com');
     await userEvent.type(screen.getByLabelText('Password'), 'wrong-password');
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
     const msg = await screen.findByText('The email or password is not right. Check both and try again.');

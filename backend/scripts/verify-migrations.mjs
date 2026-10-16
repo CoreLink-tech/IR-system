@@ -81,7 +81,7 @@ const inc = (id, ip, user, rule, status, updated) =>
 const blk = (id, ip, active, perm, expires, created) =>
   `INSERT INTO security_ip_blocks (id, ipAddress, action, reason, isPermanent, expiresAt, active, createdAt, updatedAt) VALUES ('${id}','${ip}','BLOCK','r',${perm},${expires ? `'${expires}'` : 'NULL'},${active},'${created}','${created}');`;
 sql([
-  "INSERT INTO security_users (id, email, passwordHash, role, updatedAt) VALUES ('u1','a@pishon.ng','x','SECURITY_ADMIN',NOW(3));",
+  "INSERT INTO security_users (id, email, passwordHash, role, updatedAt) VALUES ('u1','a@example.com','x','SECURITY_ADMIN',NOW(3));",
   // three open incidents for one address (the newest, i3, must win the slot), plus a resolved one
   inc('i1', '203.0.113.9', null, 'R_IP', 'OPEN', '2026-01-01 10:00:00'),
   inc('i2', '203.0.113.9', null, 'R_IP', 'INVESTIGATING', '2026-01-01 11:00:00'),

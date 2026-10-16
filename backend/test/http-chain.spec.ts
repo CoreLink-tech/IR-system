@@ -19,7 +19,7 @@ import { JwtOrApiKeyGuard } from '../src/common/guards/jwt-or-api-key.guard';
 import { AllExceptionsFilter } from '../src/common/filters/http-exception.filter';
 import { RequestIdInterceptor } from '../src/common/interceptors/request-id.interceptor';
 
-process.env.API_KEY_PREFIX = 'PMS_';
+process.env.API_KEY_PREFIX = 'IRS_';
 
 /** Stands in for Passport: the role comes from x-role, no role means not signed in. */
 class FakeJwt {
@@ -28,15 +28,15 @@ class FakeJwt {
     const role = req.headers['x-role'];
     // The real guard (Passport) answers 401 when there is no valid login.
     if (!role) throw new UnauthorizedException();
-    req.actor = { type: 'USER', id: 'u1', label: 'tester@pishon.ng', role };
+    req.actor = { type: 'USER', id: 'u1', label: 'tester@example.com', role };
     return true;
   }
 }
 
 const KEYS: Record<string, any> = {
-  PMS_events: { id: 'k1', name: 'website', scopes: 'events:write' },
-  PMS_block: { id: 'k2', name: 'blocklist', scopes: 'block:read' },
-  PMS_both: { id: 'k3', name: 'all', scopes: 'events:write,block:read' },
+  IRS_events: { id: 'k1', name: 'website', scopes: 'events:write' },
+  IRS_block: { id: 'k2', name: 'blocklist', scopes: 'block:read' },
+  IRS_both: { id: 'k3', name: 'all', scopes: 'events:write,block:read' },
 };
 
 describe('HTTP access chain (real guards, validation and error handling)', () => {
@@ -88,36 +88,36 @@ describe('HTTP access chain (real guards, validation and error handling)', () =>
 
   describe('POST /api/v1/events', () => {
     it('accepts an event from a key with events:write', async () => {
-      const res = await asKey(http().post('/api/v1/events').send(goodEvent), 'PMS_events').expect(201);
+      const res = await asKey(http().post('/api/v1/events').send(goodEvent), 'IRS_events').expect(201);
       expect(res.body).toMatchObject({ id: 'e1' });
       expect(res.headers['x-request-id']).toBeTruthy();
     });
     it('passes the key id and the sender address to the service', async () => {
-      await asKey(http().post('/api/v1/events').send(goodEvent), 'PMS_events').expect(201);
+      await asKey(http().post('/api/v1/events').send(goodEvent), 'IRS_events').expect(201);
       expect(events.ingest).toHaveBeenCalledWith(expect.objectContaining({ event_type: 'login_failed' }), expect.objectContaining({ apiKeyId: 'k1' }));
     });
     it('refuses a key without events:write', async () => {
-      await asKey(http().post('/api/v1/events').send(goodEvent), 'PMS_block').expect(403);
+      await asKey(http().post('/api/v1/events').send(goodEvent), 'IRS_block').expect(403);
       expect(events.ingest).not.toHaveBeenCalled();
     });
     it('refuses anonymous callers, wrong credentials and administrator logins', async () => {
       await http().post('/api/v1/events').send(goodEvent).expect(401);
-      await asKey(http().post('/api/v1/events').send(goodEvent), 'PMS_unknown').expect(401);
+      await asKey(http().post('/api/v1/events').send(goodEvent), 'IRS_unknown').expect(401);
       await asRole(http().post('/api/v1/events').send(goodEvent), 'SUPER_ADMIN').expect(401);
       expect(events.ingest).not.toHaveBeenCalled();
     });
     it('rejects an invalid event with a list of what is wrong', async () => {
-      const res = await asKey(http().post('/api/v1/events').send({ severity: 'URGENT' }), 'PMS_events').expect(400);
+      const res = await asKey(http().post('/api/v1/events').send({ severity: 'URGENT' }), 'IRS_events').expect(400);
       expect(res.body.message.join(' ')).toMatch(/event_type/);
       expect(res.body.message.join(' ')).toMatch(/severity/);
       expect(res.body.requestId).toBeTruthy();
     });
     it('rejects unknown fields rather than silently storing them', async () => {
-      await asKey(http().post('/api/v1/events').send({ ...goodEvent, is_admin: true }), 'PMS_events').expect(400);
+      await asKey(http().post('/api/v1/events').send({ ...goodEvent, is_admin: true }), 'IRS_events').expect(400);
     });
     it('never reveals internal error detail', async () => {
       events.ingest.mockRejectedValueOnce(new Error('ECONNREFUSED 10.1.2.3:3306 using password'));
-      const res = await asKey(http().post('/api/v1/events').send(goodEvent), 'PMS_events').expect(500);
+      const res = await asKey(http().post('/api/v1/events').send(goodEvent), 'IRS_events').expect(500);
       expect(res.body.message).toBe('Internal server error');
       expect(JSON.stringify(res.body)).not.toContain('10.1.2.3');
     });
@@ -125,7 +125,7 @@ describe('HTTP access chain (real guards, validation and error handling)', () =>
 
   describe('blocklist routes serve both the website key and administrators', () => {
     it('lets the website key read the blocklist', async () => {
-      const res = await asKey(http().get('/api/v1/security/blocked-ips'), 'PMS_block').expect(200);
+      const res = await asKey(http().get('/api/v1/security/blocked-ips'), 'IRS_block').expect(200);
       expect(res.body).toEqual({ data: [{ ipAddress: '198.51.100.7' }] });
     });
     it('lets an administrator read the same route with a login (regression: this used to answer 401)', async () => {
@@ -134,7 +134,7 @@ describe('HTTP access chain (real guards, validation and error handling)', () =>
       }
     });
     it('refuses a key that cannot read blocks, and anonymous callers', async () => {
-      await asKey(http().get('/api/v1/security/blocked-ips'), 'PMS_events').expect(403);
+      await asKey(http().get('/api/v1/security/blocked-ips'), 'IRS_events').expect(403);
       await http().get('/api/v1/security/blocked-ips').expect(401);
       expect(blocking.activeBlocks).not.toHaveBeenCalled();
     });
@@ -142,15 +142,15 @@ describe('HTTP access chain (real guards, validation and error handling)', () =>
       await asRole(http().get('/api/v1/security/blocks/history'), 'VIEWER').expect(403);
       await asRole(http().get('/api/v1/security/blocks/history?ip=198.51.100.7&limit=5'), 'ANALYST').expect(200);
       expect(blocking.history).toHaveBeenLastCalledWith('198.51.100.7', 5);
-      await asKey(http().get('/api/v1/security/blocks/history'), 'PMS_block').expect(200);
+      await asKey(http().get('/api/v1/security/blocks/history'), 'IRS_block').expect(200);
       expect(blocking.history).toHaveBeenLastCalledWith(undefined, 100);
     });
     it('caps and sanitizes the history limit', async () => {
-      await asKey(http().get('/api/v1/security/blocks/history?limit=99999'), 'PMS_block').expect(200);
+      await asKey(http().get('/api/v1/security/blocks/history?limit=99999'), 'IRS_block').expect(200);
       expect(blocking.history).toHaveBeenLastCalledWith(undefined, 500);
-      await asKey(http().get('/api/v1/security/blocks/history?limit=-3'), 'PMS_block').expect(200);
+      await asKey(http().get('/api/v1/security/blocks/history?limit=-3'), 'IRS_block').expect(200);
       expect(blocking.history).toHaveBeenLastCalledWith(undefined, 100);
-      await asKey(http().get('/api/v1/security/blocks/history?limit=abc'), 'PMS_block').expect(200);
+      await asKey(http().get('/api/v1/security/blocks/history?limit=abc'), 'IRS_block').expect(200);
       expect(blocking.history).toHaveBeenLastCalledWith(undefined, 100);
     });
   });

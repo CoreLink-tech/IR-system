@@ -57,7 +57,7 @@ d('the real dashboard against the live Security API', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
     expect(await screen.findByRole('heading', { name: 'Incidents' }, { timeout: 15000 })).toBeInTheDocument();
     expect(getState().status).toBe('signedIn');
-    expect(jar.has('pishon_rt')).toBe(true);                         // the cookie is held by the "browser", not by the app
+    expect(jar.has('ir_rt')).toBe(true);                         // the cookie is held by the "browser", not by the app
     expect(JSON.stringify({ ...localStorage, ...sessionStorage })).not.toMatch(/eyJ/);
   }, 30000);
 
@@ -155,7 +155,7 @@ d('the real dashboard against the live Security API', () => {
     await userEvent.click(within(dlg).getByRole('button', { name: 'Create key' }));
     const once = await screen.findByRole('dialog', { name: 'Your new API key' }, { timeout: 15000 });
     const raw = within(once).getByTestId('raw-key').textContent!;
-    expect(raw).toMatch(/^PMS_[A-Za-z0-9_-]{20,}$/);
+    expect(raw).toMatch(/^IRS_[A-Za-z0-9_-]{20,}$/);
     await userEvent.click(within(once).getByRole('checkbox')); await userEvent.click(within(once).getByRole('button', { name: 'Done' }));
     await waitFor(() => expect(document.body.textContent).not.toContain(raw));
     const row = (await screen.findAllByRole('row')).find((x) => new RegExp(`live-ui-${STAMP}`).test(x.textContent ?? ''))!;
@@ -170,6 +170,6 @@ d('the real dashboard against the live Security API', () => {
     await userEvent.click(await screen.findByRole('button', { name: /Live Admin|admin@/ }, { timeout: 15000 }));
     await userEvent.click(screen.getByRole('menuitem', { name: 'Sign out' }));
     expect(await screen.findByRole('heading', { name: 'Sign in' }, { timeout: 15000 })).toBeInTheDocument();
-    expect(jar.has('pishon_rt')).toBe(false);
+    expect(jar.has('ir_rt')).toBe(false);
   }, 40000);
 });

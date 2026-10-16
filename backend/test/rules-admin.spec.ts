@@ -4,7 +4,7 @@ import { KEY_LIMITS, READ_ONLY_KEYS, defaultConfigFor, limitsFor, validateRuleCo
 import { RulesService } from '../src/rules/rules.service';
 import { NARRATIVES } from '../src/reports/rule-narratives';
 
-const actor = { type: 'USER' as const, id: 'u1', label: 'sec@pishon.ng', ip: '203.0.113.5', userAgent: 'jest', requestId: 'r1' };
+const actor = { type: 'USER' as const, id: 'u1', label: 'sec@example.com', ip: '203.0.113.5', userAgent: 'jest', requestId: 'r1' };
 
 describe('rule limits cover every built-in rule', () => {
   it('has a range for every editable setting of every rule, and the defaults sit inside it', () => {

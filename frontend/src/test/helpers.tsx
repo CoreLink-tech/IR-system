@@ -71,7 +71,7 @@ export async function renderApp(opts: { role: Role; route?: string; routes?: Rec
   __resetForTests();
   setConfig({ apiBaseUrl: API, idleTimeoutMinutes: 30 });
   const net = installFetch({ ...baseRoutes(opts.role), ...(opts.userOver ? { 'POST /auth/login': { status: 201, body: { user: fx.user(opts.role, opts.userOver), accessToken: jwt(), csrfToken: 'csrf-1' } } } : {}), ...(opts.routes ?? {}) });
-  if (opts.signedIn !== false) await signIn('person@pishon.ng', 'a-long-password-1');
+  if (opts.signedIn !== false) await signIn('person@example.com', 'a-long-password-1');
   const client = newClient();
   const ui: ReactElement = (
     <QueryClientProvider client={client}><TimeProvider initial="utc"><MemoryRouter initialEntries={[opts.route ?? '/']}><App /></MemoryRouter></TimeProvider></QueryClientProvider>

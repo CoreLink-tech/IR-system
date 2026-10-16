@@ -1,7 +1,7 @@
 {
-  "name": "pishon-incident-response-backend",
+  "name": "incident-response-backend",
   "version": "1.0.0",
-  "description": "Incident Response & Security Monitoring Platform for Pishon Market",
+  "description": "Incident Response & Security Monitoring Platform for the website",
   "license": "MIT",
   "scripts": {
     "build": "nest build",

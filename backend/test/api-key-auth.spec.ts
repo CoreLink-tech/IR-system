@@ -11,7 +11,7 @@ import { JwtOrApiKeyGuard } from '../src/common/guards/jwt-or-api-key.guard';
 import { Scopes } from '../src/common/decorators/scopes.decorator';
 import { Roles } from '../src/common/decorators/roles.decorator';
 
-process.env.API_KEY_PREFIX = 'PMS_';
+process.env.API_KEY_PREFIX = 'IRS_';
 process.env.API_KEY_HASH_PEPPER = 'test-pepper';
 
 function keyStore() {
@@ -33,7 +33,7 @@ describe('ApiKeysService', () => {
   it('returns the raw key once and stores only a hash', async () => {
     const { rows, svc } = keyStore();
     const created = await svc.create({ name: 'website', scopes: ['events:write', 'block:read'] });
-    expect(created.apiKey.startsWith('PMS_')).toBe(true);
+    expect(created.apiKey.startsWith('IRS_')).toBe(true);
     expect(rows[0].keyHash).toMatch(/^[0-9a-f]{64}$/);
     expect(JSON.stringify(rows)).not.toContain(created.apiKey);
     expect(created.scopes).toEqual(['events:write', 'block:read']);
@@ -53,7 +53,7 @@ describe('ApiKeysService', () => {
   });
 
   it('rejects an unknown key', async () => {
-    expect(await keyStore().svc.verifyApiKey('PMS_0000000000000000notarealkey')).toBeNull();
+    expect(await keyStore().svc.verifyApiKey('IRS_0000000000000000notarealkey')).toBeNull();
   });
 
   it('REGRESSION revoke response: revoking a key returned the whole stored record, including its hash', async () => {
@@ -167,11 +167,11 @@ describe('ApiKeyGuard', () => {
   });
 
   it('rejects a key the service does not recognise', async () => {
-    await expect(guardWith(() => null).canActivate(context({ authorization: 'Bearer PMS_abc' }).ctx)).rejects.toThrow('Invalid or expired API key');
+    await expect(guardWith(() => null).canActivate(context({ authorization: 'Bearer IRS_abc' }).ctx)).rejects.toThrow('Invalid or expired API key');
   });
 
   it('accepts a valid key and records who is acting, with trimmed scopes', async () => {
-    const { req, ctx } = context({ authorization: 'Bearer PMS_good', 'user-agent': 'php-client' });
+    const { req, ctx } = context({ authorization: 'Bearer IRS_good', 'user-agent': 'php-client' });
     expect(await guardWith(() => key).canActivate(ctx)).toBe(true);
     expect(req.actor).toMatchObject({ type: 'API_KEY', id: 'k1', label: 'website', scopes: ['events:write', 'block:read'], userAgent: 'php-client' });
     expect(req.apiKey).toBe(key);
@@ -218,9 +218,9 @@ describe('JwtOrApiKeyGuard', () => {
     return { guard: new JwtOrApiKeyGuard(new Reflector(), apiKeyGuard, jwtGuard), jwtGuard };
   }
 
-  it('sends a PMS_ token down the API key path and never calls the JWT guard', async () => {
+  it('sends a IRS_ token down the API key path and never calls the JWT guard', async () => {
     const { guard, jwtGuard } = build({});
-    const { ctx, req } = context({ authorization: 'Bearer PMS_abc' }, Routes.prototype.read);
+    const { ctx, req } = context({ authorization: 'Bearer IRS_abc' }, Routes.prototype.read);
     expect(await guard.canActivate(ctx)).toBe(true);
     expect(req.actor.type).toBe('API_KEY');
     expect(jwtGuard.canActivate).not.toHaveBeenCalled();
@@ -228,12 +228,12 @@ describe('JwtOrApiKeyGuard', () => {
 
   it('refuses an API key that lacks the required scope', async () => {
     const { guard } = build({ verify: () => ({ ...key, scopes: 'events:write' }) });
-    await expect(guard.canActivate(context({ authorization: 'Bearer PMS_abc' }, Routes.prototype.read).ctx)).rejects.toThrow('Missing required scope');
+    await expect(guard.canActivate(context({ authorization: 'Bearer IRS_abc' }, Routes.prototype.read).ctx)).rejects.toThrow('Missing required scope');
   });
 
   it('refuses an unknown API key', async () => {
     const { guard } = build({ verify: () => null });
-    await expect(guard.canActivate(context({ authorization: 'Bearer PMS_abc' }, Routes.prototype.read).ctx)).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(guard.canActivate(context({ authorization: 'Bearer IRS_abc' }, Routes.prototype.read).ctx)).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
   it('sends any other token down the JWT path and enforces roles', async () => {

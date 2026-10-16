@@ -7,7 +7,7 @@ import * as fx from '@/test/fixtures';
 const ID = 'INC-20261007-00001ABCD';
 const rows = [
   fx.incident({ id: 'a', incidentId: 'INC-A', title: 'Guessing passwords', status: 'OPEN', assignedTo: null }),
-  fx.incident({ id: 'b', incidentId: 'INC-B', title: 'Account used from many addresses', status: 'INVESTIGATING', sourceIp: null, userId: 'user-9', assignedTo: 'u2', assignee: { id: 'u2', email: 'ana@pishon.ng', name: 'Ana' }, severity: 'CRITICAL' }),
+  fx.incident({ id: 'b', incidentId: 'INC-B', title: 'Account used from many addresses', status: 'INVESTIGATING', sourceIp: null, userId: 'user-9', assignedTo: 'u2', assignee: { id: 'u2', email: 'ana@example.com', name: 'Ana' }, severity: 'CRITICAL' }),
   fx.incident({ id: 'c', incidentId: 'INC-C', title: 'Platform-wide surge', status: 'RESOLVED', sourceIp: null, userId: null, severity: 'LOW' }),
 ];
 const list = (extra: Record<string, any> = {}) => ({ 'GET /incidents': { body: fx.page(rows) }, ...extra });
@@ -90,7 +90,7 @@ const detailRoutes = (over: Record<string, any> = {}, inc = fx.incident()) => ({
   [`GET /incidents/${ID}`]: { body: inc },
   [`GET /reports/incidents/${ID}`]: { body: fx.report() },
   [`GET /reports/technical/${ID}`]: { body: fx.technical() },
-  'GET /auth/assignees': { body: { data: [{ id: 'u2', email: 'ana@pishon.ng', name: 'Ana', role: 'ANALYST' }, { id: 'u3', email: 'bo@pishon.ng', name: null, role: 'SECURITY_ADMIN' }] } },
+  'GET /auth/assignees': { body: { data: [{ id: 'u2', email: 'ana@example.com', name: 'Ana', role: 'ANALYST' }, { id: 'u3', email: 'bo@example.com', name: null, role: 'SECURITY_ADMIN' }] } },
   ...over,
 });
 

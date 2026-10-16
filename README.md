@@ -1,12 +1,12 @@
-# Pishon Incident Response & Security Monitoring Platform
+# Incident Response & Security Monitoring Platform
 
-Production-oriented incident response backend for Pishon Market.
+Production-oriented incident response backend for e-commerce websites.
 
 - Backend: Node.js + TypeScript + NestJS + Prisma
-- Database: Reuses Pishon's existing MySQL/MariaDB. Creates only security_* tables.
-- Auth: JWT for admins, hashed API keys for Pishon -> Security API.
+- Database: Reuses the website's existing MySQL/MariaDB. Creates only security_* tables.
+- Auth: JWT for admins, hashed API keys for the website -> Security API.
 - Detection: Configurable rule engine with 0-100 risk scoring.
-- Blocking: State in DB, exposed via /api/v1/security/blocked-ips for Pishon to enforce.
+- Blocking: State in DB, exposed via /api/v1/security/blocked-ips for the website to enforce.
 
 ## Quick Start (Termux)
 
@@ -33,16 +33,18 @@ what they may use. See `frontend/README.md` to run and deploy it and `docs/FRONT
 
 The API's `CORS_ORIGINS` must list the dashboard's exact origin. After `git pull` on an existing install, run
 `npx prisma migrate deploy`. A database first created with `prisma db push` must be baselined once: see `docs/DATABASE.md`.
+The session cookie is now named `ir_rt` and the default API key prefix is `IRS_`, so everyone signs in once more after this update (see `API_KEY_PREFIX` below for keeping older keys).
 
 ## Environment Variables
 
 Copy backend/.env.example to backend/.env and fill in:
 
-- DATABASE_URL          Pishon MySQL/MariaDB connection string
+- DATABASE_URL          MySQL/MariaDB connection string
 - JWT_SECRET            Long random string, 64+ chars
 - JWT_REFRESH_SECRET    Long random string, 64+ chars
 - API_KEY_HASH_PEPPER   Random pepper for API key hashing
 - BOOTSTRAP_ADMIN_*     Used once by npm run seed
+- API_KEY_PREFIX        Prefix of generated API keys. Default `IRS_` (earlier builds used `PMS_`: set `API_KEY_PREFIX=PMS_` to keep keys issued by those builds working)
 - CORS_ORIGINS          The dashboard's exact origin(s), comma separated
 - TRUSTED_PROXIES       Reverse proxies whose X-Forwarded-For is believed: addresses, CIDR blocks, or `private`. Empty by default (headers ignored)
 - CLIENT_IP_HEADER      Optional header the proxy sets to the client address, for example CF-Connecting-IP
@@ -91,7 +93,7 @@ Generate secrets:
 ## IP Blocking
 
 This platform records block state. It does NOT enforce network blocks.
-Pishon's PHP library (`integration/php/`, see its README) is responsible for rejecting traffic based on
+The PHP library (`integration/php/`, see its README) is responsible for rejecting traffic based on
 GET /api/v1/security/blocked-ips. Automatic blocks are always temporary.
 
 ## License

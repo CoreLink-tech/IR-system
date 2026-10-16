@@ -122,7 +122,7 @@ final class SecurityClient implements EventSender
                 'Authorization: Bearer ' . $this->apiKey,
                 'Accept: application/json',
                 'X-Request-Id: ' . self::requestId(),
-                'User-Agent: PishonSecurityClient/1.0',
+                'User-Agent: SecurityClient/1.0',
             ];
             if ($body !== null) {
                 $headers[] = 'Content-Type: application/json';

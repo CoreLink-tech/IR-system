@@ -26,7 +26,7 @@ class FakeJwt {
     const req = ctx.switchToHttp().getRequest();
     const role = req.headers['x-role'];
     if (!role) throw new UnauthorizedException();
-    req.actor = { type: 'USER', id: 'u1', label: 'tester@pishon.ng', role, ip: '203.0.113.5', userAgent: 'jest', requestId: 'r1' };
+    req.actor = { type: 'USER', id: 'u1', label: 'tester@example.com', role, ip: '203.0.113.5', userAgent: 'jest', requestId: 'r1' };
     return true;
   }
 }
@@ -48,7 +48,7 @@ describe('Controllers (real validation and role checks, services stubbed)', () =
   const incidents = { list: jest.fn(async () => ({ data: [], total: 0 })), findOne: jest.fn(), updateStatus: jest.fn(async () => ({ ok: true })), assign: jest.fn(async () => ({ ok: true })) };
   const ips = { detail: jest.fn() };
   const intel = { lookup: jest.fn(async () => ({ isTor: true })), providerNames: ['tor'] };
-  const keys = { create: jest.fn(async () => ({ id: 'k1', apiKey: 'PMS_x' })), list: jest.fn(async () => []), revoke: jest.fn(async () => ({ ok: true })), rotate: jest.fn(async () => ({ id: 'k2' })) };
+  const keys = { create: jest.fn(async () => ({ id: 'k1', apiKey: 'IRS_x' })), list: jest.fn(async () => []), revoke: jest.fn(async () => ({ ok: true })), rotate: jest.fn(async () => ({ id: 'k2' })) };
   const auditLogs = { findMany: jest.fn(async () => []), count: jest.fn(async () => 0) };
   const prisma = { securityAuditLog: auditLogs };
 
@@ -78,7 +78,7 @@ describe('Controllers (real validation and role checks, services stubbed)', () =
       // The test client connects from the local machine; with no trusted proxies listed, a
       // forwarding header from it is ignored, so the connection address is what is recorded.
       await http().post('/api/v1/auth/login').set('User-Agent', 'jest').set('X-Forwarded-For', '203.0.113.9')
-        .send({ email: 'a@pishon.ng', password: 'long-enough-1' }).expect(201);
+        .send({ email: 'a@example.com', password: 'long-enough-1' }).expect(201);
       const ctx = (auth.login as jest.Mock).mock.calls.at(-1)![2];
       expect(ctx.userAgent).toBe('jest');
       expect(['127.0.0.1', '::1']).toContain(ctx.ip);
@@ -86,8 +86,8 @@ describe('Controllers (real validation and role checks, services stubbed)', () =
     });
     it('validates login input', async () => {
       await http().post('/api/v1/auth/login').send({ email: 'not-an-email', password: 'long-enough-1' }).expect(400);
-      await http().post('/api/v1/auth/login').send({ email: 'a@pishon.ng', password: 'short' }).expect(400);
-      await http().post('/api/v1/auth/login').send({ email: 'a@pishon.ng', password: 'long-enough-1', admin: true }).expect(400);
+      await http().post('/api/v1/auth/login').send({ email: 'a@example.com', password: 'short' }).expect(400);
+      await http().post('/api/v1/auth/login').send({ email: 'a@example.com', password: 'long-enough-1', admin: true }).expect(400);
       expect(auth.login).not.toHaveBeenCalled();
     });
     it('refresh and logout are open; with no token in the body they look for the browser cookie', async () => {
@@ -100,14 +100,14 @@ describe('Controllers (real validation and role checks, services stubbed)', () =
       expect(await http().post('/api/v1/auth/logout').send({}).expect(201).then((x) => x.body)).toEqual({ ok: true });
     });
     it('only the super admin can create users, with a strong password and a valid email', async () => {
-      const body = { email: 'n@pishon.ng', password: 'a-long-password-1', role: 'ANALYST' };
+      const body = { email: 'n@example.com', password: 'a-long-password-1', role: 'ANALYST' };
       await as(http().post('/api/v1/auth/users').send(body), 'SECURITY_ADMIN').expect(403);
       await http().post('/api/v1/auth/users').send(body).expect(401);
       await as(http().post('/api/v1/auth/users').send({ ...body, password: 'short' }), 'SUPER_ADMIN').expect(400);
       await as(http().post('/api/v1/auth/users').send({ ...body, email: 'nope' }), 'SUPER_ADMIN').expect(400);
       expect(auth.createUser).not.toHaveBeenCalled();
       await as(http().post('/api/v1/auth/users').send(body), 'SUPER_ADMIN').expect(201);
-      expect(auth.createUser).toHaveBeenCalledWith(body, expect.objectContaining({ id: 'u1', label: 'tester@pishon.ng' }));
+      expect(auth.createUser).toHaveBeenCalledWith(body, expect.objectContaining({ id: 'u1', label: 'tester@example.com' }));
     });
     it('any signed-in role can change their own password, which needs a 12 character new one', async () => {
       const body = { currentPassword: 'old-password-1', newPassword: 'a-much-longer-new-pw' };
@@ -169,10 +169,10 @@ describe('Controllers (real validation and role checks, services stubbed)', () =
     });
     it('analysts can change incident status but cannot assign; admins can assign', async () => {
       await as(http().post('/api/v1/incidents/i1/status').send({ status: 'INVESTIGATING' }), 'ANALYST').expect(201);
-      expect(incidents.updateStatus).toHaveBeenCalledWith('i1', 'INVESTIGATING', undefined, 'u1', 'tester@pishon.ng');
+      expect(incidents.updateStatus).toHaveBeenCalledWith('i1', 'INVESTIGATING', undefined, 'u1', 'tester@example.com');
       await as(http().post('/api/v1/incidents/i1/assign').send({ assignedTo: 'u2' }), 'ANALYST').expect(403);
       await as(http().post('/api/v1/incidents/i1/assign').send({ assignedTo: 'u2' }), 'SECURITY_ADMIN').expect(201);
-      expect(incidents.assign).toHaveBeenCalledWith('i1', 'u2', 'u1', 'tester@pishon.ng');
+      expect(incidents.assign).toHaveBeenCalledWith('i1', 'u2', 'u1', 'tester@example.com');
     });
     it('rejects an invalid incident status', async () => {
       await as(http().post('/api/v1/incidents/i1/status').send({ status: 'EXPLODED' }), 'ANALYST').expect(400);

@@ -47,7 +47,7 @@ const ATTACKER = '198.51.100.77';
 function load() {
   const t0 = Date.now();
   sql(`SET unique_checks=0, foreign_key_checks=0;
-INSERT INTO security_users (id, email, passwordHash, role, updatedAt) VALUES ('u-admin','admin@pishon.ng','x','SECURITY_ADMIN',NOW(3));
+INSERT INTO security_users (id, email, passwordHash, role, updatedAt) VALUES ('u-admin','admin@example.com','x','SECURITY_ADMIN',NOW(3));
 INSERT INTO security_incidents (id, incidentId, title, description, severity, riskScore, status, sourceIp, detectionRule, openKey, createdAt, updatedAt)
 SELECT CONCAT('inc', seq), CONCAT('INC-20260101-', LPAD(seq, 7, '0')), 'Repeated failed sign-ins', 'd',
   ELT(1 + seq MOD 4, 'LOW','MEDIUM','HIGH','CRITICAL'), (seq*7) MOD 100,

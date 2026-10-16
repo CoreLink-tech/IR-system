@@ -1,6 +1,6 @@
-# Pishon Security dashboard
+# Security dashboard
 
-The web dashboard for the Pishon Security API. Plain English first, technical detail one click deeper.
+The web dashboard for the Security API. Plain English first, technical detail one click deeper.
 Architecture, the session design and the role matrix are in `../docs/FRONTEND.md`.
 
 ## Run it (development)

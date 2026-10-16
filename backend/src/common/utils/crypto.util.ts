@@ -1,6 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 
-export function generateApiKey(prefix = 'PMS_'): { raw: string; prefix: string; hash: string } {
+export function generateApiKey(prefix = 'IRS_'): { raw: string; prefix: string; hash: string } {
   // The lookup prefix MUST be the leading part of the raw key, because
   // verifyApiKey() derives it by slicing the presented key.
   const lookup = randomBytes(8).toString('hex'); // 16 chars

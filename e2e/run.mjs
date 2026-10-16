@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BASE = (process.env.E2E_BASE ?? 'http://localhost:4000').replace(/\/$/, '');
 const API = `${BASE}/api/v1`;
-const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? 'admin@pishon.local';
+const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? 'admin@example.local';
 const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? 'ChangeMeStrong!123';
 const PHP = process.env.E2E_PHP ?? 'php';
 const ONLY = process.env.E2E_ONLY ? process.env.E2E_ONLY.split(',') : null;
@@ -114,7 +114,7 @@ async function unblock(address) { return http('POST', '/security/unblock', { tok
 
 // ------------------------------------------------------------------ PHP helper
 const phpOk = (() => { const r = spawnSync(PHP, ['-r', 'echo extension_loaded("curl") && PHP_VERSION_ID >= 70400 ? "yes" : "no";'], { encoding: 'utf8' }); return r.status === 0 && r.stdout === 'yes'; })();
-const stateRoot = mkdtempSync(join(tmpdir(), `pishon-e2e-${RUN}-`));
+const stateRoot = mkdtempSync(join(tmpdir(), `ir-e2e-${RUN}-`));
 let stateN = 0;
 const newState = () => join(stateRoot, String(++stateN));
 /** Simulates one page view. Returns whether the visitor was stopped. */
@@ -147,7 +147,7 @@ await scenario('01', 'Accounts, roles and API keys', async () => {
   if (!check('the administrator can sign in', !!a)) throw new Error('cannot sign in');
   S.admin = a;
   const mk = async (label, role) => {
-    const email = `e2e-${RUN}-${label}@pishon.test`;
+    const email = `e2e-${RUN}-${label}@example.test`;
     const password = `E2e-${RUN}-pw-${label}!!`;
     const c = await http('POST', '/auth/users', { token: admin(), body: { email, password, name: `E2E ${label}`, role } });
     check(`creates a ${role} account`, c.status === 201, `status ${c.status}`);
@@ -173,7 +173,7 @@ await scenario('01', 'Accounts, roles and API keys', async () => {
 
 await scenario('02', 'Sign-in security', async () => {
   const wrong = await http('POST', '/auth/login', { body: { email: ADMIN_EMAIL, password: 'definitely-wrong-password' } });
-  const ghost = await http('POST', '/auth/login', { body: { email: `ghost-${RUN}@pishon.test`, password: 'definitely-wrong-password' } });
+  const ghost = await http('POST', '/auth/login', { body: { email: `ghost-${RUN}@example.test`, password: 'definitely-wrong-password' } });
   check('wrong password and unknown email get the same answer', wrong.status === 401 && ghost.status === 401 && wrong.body.message === ghost.body.message);
   const s = await login(ADMIN_EMAIL, ADMIN_PASSWORD);
   const r2 = await http('POST', '/auth/refresh', { body: { refreshToken: s.refreshToken } });
@@ -199,8 +199,8 @@ await scenario('03', 'Who can do what (checked on the live server)', async () =>
     ['viewer', 'POST', '/security/block', 403, { ipAddress: '203.0.113.250', reason: 'x' }], ['analyst', 'POST', '/security/block', 403, { ipAddress: '203.0.113.250', reason: 'x' }],
     ['viewer', 'POST', '/security/unblock', 403, { ipAddress: '203.0.113.250', reason: 'x' }],
     ['analyst', 'POST', '/security/allow', 403, { ipAddress: '203.0.113.250', reason: 'x' }],
-    ['viewer', 'POST', '/auth/users', 403, { email: 'x@pishon.test', password: 'long-password-12345', role: 'VIEWER' }],
-    ['secadmin', 'POST', '/auth/users', 403, { email: 'x@pishon.test', password: 'long-password-12345', role: 'VIEWER' }],
+    ['viewer', 'POST', '/auth/users', 403, { email: 'x@example.test', password: 'long-password-12345', role: 'VIEWER' }],
+    ['secadmin', 'POST', '/auth/users', 403, { email: 'x@example.test', password: 'long-password-12345', role: 'VIEWER' }],
     ['viewer', 'GET', '/security/blocked-ips', 200], ['viewer', 'GET', '/security/blocks/history', 403], ['analyst', 'GET', '/security/blocks/history', 200],
     ['viewer', 'POST', '/ips/203.0.113.250/refresh-intelligence', 403],
     ['anon', 'GET', '/incidents', 401], ['anon', 'GET', '/security/blocked-ips', 401], ['anon', 'GET', '/reports/executive-summary', 401],
@@ -217,7 +217,7 @@ await scenario('03', 'Who can do what (checked on the live server)', async () =>
   check('a key without block:read cannot read the blocklist', (await http('GET', '/security/blocked-ips', { key: S.keys.events })).status === 403);
   check('a key with block:read can read the blocklist', (await http('GET', '/security/blocked-ips', { key: S.keys.block })).status === 200);
   check('an administrator login cannot be used to send events', (await event(admin(), failedLogin(ip(), uid('x')))).status === 401);
-  check('an unknown key is refused', (await event('PMS_000000000000000000000000000000', failedLogin(ip(), uid('x')))).status === 401);
+  check('an unknown key is refused', (await event('IRS_000000000000000000000000000000', failedLogin(ip(), uid('x')))).status === 401);
 });
 
 await scenario('04', 'What is stored from an event', async () => {
@@ -542,15 +542,15 @@ await scenario('14', 'Dashboard: cookie session, user admin, rules, address list
   // cookie session
   const l = await call('POST', '/auth/login', { body: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD, useCookie: true } });
   check('browser sign-in keeps the refresh token out of the body', l.status === 201 && l.json.refreshToken === undefined && !!l.json.csrfToken);
-  check('and sets an httpOnly, SameSite=Strict cookie scoped to the auth routes', jar.has('pishon_rt'));
+  check('and sets an httpOnly, SameSite=Strict cookie scoped to the auth routes', jar.has('ir_rt'));
   const csrf = await call('GET', '/auth/csrf');
   check('a CSRF token is available to the page that holds the cookie', csrf.status === 200 && !!csrf.json.csrfToken);
   check('refresh without the CSRF token is refused', (await call('POST', '/auth/refresh', { body: {} })).status === 403);
   check('refresh from another website is refused', (await call('POST', '/auth/refresh', { body: {}, headers: { origin: 'https://evil.example', 'x-csrf-token': csrf.json.csrfToken } })).status === 403);
-  const stale = jar.get('pishon_rt');
+  const stale = jar.get('ir_rt');
   const rf = await call('POST', '/auth/refresh', { body: {}, headers: { 'x-csrf-token': csrf.json.csrfToken } });
-  check('refresh with cookie and CSRF token works and rotates the cookie', rf.status === 201 && jar.get('pishon_rt') !== stale);
-  jar.set('pishon_rt', stale);
+  check('refresh with cookie and CSRF token works and rotates the cookie', rf.status === 201 && jar.get('ir_rt') !== stale);
+  jar.set('ir_rt', stale);
   const reuse = await call('POST', '/auth/refresh', { body: {}, headers: { 'x-csrf-token': csrf.json.csrfToken } });
   check('replaying the old cookie is treated as theft and says so', reuse.status === 401 && reuse.json.code === 'refresh_token_reuse');
   const legacy = await login(ADMIN_EMAIL, ADMIN_PASSWORD);
@@ -616,7 +616,7 @@ await scenario('98', 'Rate limits', async () => {
   const sent = await burst(S.keys.full, Array.from({ length: 300 }, () => ({ event_type: 'page_view', severity: 'INFO', ip_address: ip() })), 30);
   check('the website can send a burst of 300 events without being refused', sent.every((r) => r.status === 201), `${sent.filter((r) => r.status !== 201).length} refused, ${Date.now() - t} ms`);
   const tries = [];
-  for (let i = 0; i < 40; i++) tries.push(await http('POST', '/auth/login', { body: { email: `nobody-${RUN}@pishon.test`, password: 'wrong-password-123' } }));
+  for (let i = 0; i < 40; i++) tries.push(await http('POST', '/auth/login', { body: { email: `nobody-${RUN}@example.test`, password: 'wrong-password-123' } }));
   const limited = tries.filter((r) => r.status === 429);
   check('repeated sign-in attempts from one address are cut off', limited.length > 0 && tries.slice(0, 5).every((r) => r.status === 401), `${limited.length} of 40 refused`);
   check('the refusal says when to try again', limited.length > 0 && limited[0].headers.get('retry-after') !== null);

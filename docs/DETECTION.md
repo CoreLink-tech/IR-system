@@ -66,7 +66,7 @@ An address is blocked automatically when an event reaches CRITICAL and at least
 `AUTO_BLOCK_MIN_RISK` (default 85). Automatic blocking never overrides an
 administrator: an existing manual or permanent block is left unchanged, and an
 existing automatic block is renewed only when under half of its time remains.
-The platform records blocks; the PishonMarket website must enforce them.
+The platform records blocks; the website must enforce them.
 
 ## Not yet covered
 

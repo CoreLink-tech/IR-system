@@ -5,7 +5,7 @@ import { renderApp } from '@/test/helpers';
 import * as fx from '@/test/fixtures';
 
 describe('users (super admin)', () => {
-  const rows = [fx.userRow('SUPER_ADMIN', { id: 'u-SUPER_ADMIN', email: 'super_admin@pishon.ng' }), fx.userRow('ANALYST', { id: 'u2', email: 'ana@pishon.ng', name: 'Ana' }), fx.userRow('VIEWER', { id: 'u3', email: 'vi@pishon.ng', isActive: false, mustChangePassword: true })];
+  const rows = [fx.userRow('SUPER_ADMIN', { id: 'u-SUPER_ADMIN', email: 'super_admin@example.com' }), fx.userRow('ANALYST', { id: 'u2', email: 'ana@example.com', name: 'Ana' }), fx.userRow('VIEWER', { id: 'u3', email: 'vi@example.com', isActive: false, mustChangePassword: true })];
   const base = (over: Record<string, any> = {}) => ({ 'GET /auth/users': { body: { data: rows } }, 'GET /auth/assignees': { body: { data: [] } }, ...over });
   const open = (over: Record<string, any> = {}) => renderApp({ role: 'SUPER_ADMIN', route: '/admin/users', routes: base(over) });
 
@@ -29,18 +29,18 @@ describe('users (super admin)', () => {
   });
   it('changes a role only after a plain-words confirmation, and shows the server result', async () => {
     const { net } = await open({ 'PATCH /auth/users/u2': { body: { ...rows[1], role: 'SECURITY_ADMIN' } } });
-    await userEvent.selectOptions(await screen.findByLabelText('Role for ana@pishon.ng'), 'SECURITY_ADMIN');
-    const dlg = await screen.findByRole('dialog', { name: 'Change ana@pishon.ng to Security admin?' });
+    await userEvent.selectOptions(await screen.findByLabelText('Role for ana@example.com'), 'SECURITY_ADMIN');
+    const dlg = await screen.findByRole('dialog', { name: 'Change ana@example.com to Security admin?' });
     expect(within(dlg).getByText(/Block and unblock addresses/)).toBeInTheDocument();
     expect(net.count('PATCH /auth/users/u2')).toBe(0);
     await userEvent.click(within(dlg).getByRole('button', { name: 'Change role' }));
     await waitFor(() => expect(net.last('PATCH /auth/users/u2')!.body).toEqual({ role: 'SECURITY_ADMIN' }));
-    expect(await screen.findByText('ana@pishon.ng is now Security admin.')).toBeInTheDocument();
+    expect(await screen.findByText('ana@example.com is now Security admin.')).toBeInTheDocument();
   });
   it("shows the server's refusal when demoting the last super admin, and leaves the dialog open", async () => {
     await open({ 'PATCH /auth/users/u2': { status: 409, body: { statusCode: 409, message: 'This is the last active super admin. Make another account a super admin first.', code: 'last_super_admin' } } });
-    await userEvent.click(await screen.findByRole('button', { name: /Deactivate ana@pishon.ng/ }));
-    const dlg = await screen.findByRole('dialog', { name: 'Deactivate ana@pishon.ng?' });
+    await userEvent.click(await screen.findByRole('button', { name: /Deactivate ana@example.com/ }));
+    const dlg = await screen.findByRole('dialog', { name: 'Deactivate ana@example.com?' });
     expect(within(dlg).getByText(/signed out everywhere now/)).toBeInTheDocument();
     await userEvent.click(within(dlg).getByRole('button', { name: 'Deactivate' }));
     expect(await within(dlg).findByText(/last active super admin/)).toBeInTheDocument();
@@ -48,14 +48,14 @@ describe('users (super admin)', () => {
   });
   it('reactivates a deactivated account', async () => {
     const { net } = await open({ 'PATCH /auth/users/u3': { body: { ...rows[2], isActive: true } } });
-    await userEvent.click(await screen.findByRole('button', { name: /Reactivate vi@pishon.ng/ }));
+    await userEvent.click(await screen.findByRole('button', { name: /Reactivate vi@example.com/ }));
     await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Reactivate' }));
     await waitFor(() => expect(net.last('PATCH /auth/users/u3')!.body).toEqual({ isActive: true }));
   });
   it('forces a password reset: needs at least 12 characters, ends sessions, and never shows the password afterwards', async () => {
     const { net } = await open({ 'POST /auth/users/u2/reset-password': { status: 201, body: { ok: true } } });
-    await userEvent.click(await screen.findByRole('button', { name: /Reset password for ana@pishon.ng/ }));
-    const dlg = await screen.findByRole('dialog', { name: 'Reset password for ana@pishon.ng' });
+    await userEvent.click(await screen.findByRole('button', { name: /Reset password for ana@example.com/ }));
+    const dlg = await screen.findByRole('dialog', { name: 'Reset password for ana@example.com' });
     expect(within(dlg).getByText(/ends every session/)).toBeInTheDocument();
     await userEvent.type(within(dlg).getByLabelText('Temporary password'), 'short');
     await userEvent.click(within(dlg).getByRole('button', { name: 'Reset password' }));
@@ -70,7 +70,7 @@ describe('users (super admin)', () => {
   });
   it('generates a strong temporary password on request', async () => {
     await open();
-    await userEvent.click(await screen.findByRole('button', { name: /Reset password for ana@pishon.ng/ }));
+    await userEvent.click(await screen.findByRole('button', { name: /Reset password for ana@example.com/ }));
     const dlg = await screen.findByRole('dialog');
     await userEvent.click(within(dlg).getByRole('button', { name: 'Generate' }));
     expect((within(dlg).getByLabelText('Temporary password') as HTMLInputElement).value).toMatch(/^[A-Za-z0-9]{20}$/);
@@ -79,13 +79,13 @@ describe('users (super admin)', () => {
     const { net } = await open({ 'POST /auth/users': { status: 201, body: fx.userRow('ANALYST') } });
     await userEvent.click(await screen.findByRole('button', { name: 'Create an account' }));
     const dlg = await screen.findByRole('dialog', { name: 'Create an account' });
-    await userEvent.type(within(dlg).getByLabelText('Email'), 'new@pishon.ng');
+    await userEvent.type(within(dlg).getByLabelText('Email'), 'new@example.com');
     await userEvent.selectOptions(within(dlg).getByLabelText('Role'), 'ANALYST');
     expect(within(dlg).getByText(/Investigate: raw events/)).toBeInTheDocument();
     await userEvent.type(within(dlg).getByLabelText('Temporary password'), 'Another-Temp-Pass-9');
     expect(within(dlg).getByRole('checkbox')).toBeChecked();
     await userEvent.click(within(dlg).getByRole('button', { name: 'Create account' }));
-    await waitFor(() => expect(net.last('POST /auth/users')!.body).toEqual({ email: 'new@pishon.ng', role: 'ANALYST', password: 'Another-Temp-Pass-9', requirePasswordChange: true }));
+    await waitFor(() => expect(net.last('POST /auth/users')!.body).toEqual({ email: 'new@example.com', role: 'ANALYST', password: 'Another-Temp-Pass-9', requirePasswordChange: true }));
   });
   it('shows an error panel with a retry if the list cannot load', async () => {
     await renderApp({ role: 'SUPER_ADMIN', route: '/admin/users', routes: { 'GET /auth/users': { status: 500, body: { statusCode: 500, message: 'x', requestId: 'req-u' } } } });
@@ -94,13 +94,13 @@ describe('users (super admin)', () => {
 });
 
 describe('API keys (security admin and above)', () => {
-  const RAW = 'PMS_0123456789abcdef0123456789abcdef0123456789abcdef';
+  const RAW = 'IRS_0123456789abcdef0123456789abcdef0123456789abcdef';
   const created = { id: 'k2', name: 'New key', scopes: ['events:write'], expiresAt: null, apiKey: RAW };
-  const base = (over: Record<string, any> = {}) => ({ 'GET /api-keys': { body: [fx.apiKey(), fx.apiKey({ id: 'k3', name: 'Old key', keyPrefix: 'PMS_zz99yy88', isActive: false, revokedAt: new Date().toISOString() })] }, ...over });
+  const base = (over: Record<string, any> = {}) => ({ 'GET /api-keys': { body: [fx.apiKey(), fx.apiKey({ id: 'k3', name: 'Old key', keyPrefix: 'IRS_zz99yy88', isActive: false, revokedAt: new Date().toISOString() })] }, ...over });
   it('lists keys with prefix, plain-English permissions, status, last use and expiry, and never a full key', async () => {
     await renderApp({ role: 'SECURITY_ADMIN', route: '/admin/api-keys', routes: base() });
     const t = await screen.findByRole('table', { name: 'API keys' });
-    expect(within(t).getByText('PMS_ab12cd34...')).toBeInTheDocument();
+    expect(within(t).getByText('IRS_ab12cd34...')).toBeInTheDocument();
     expect(within(t).getAllByText('Send security events, Read the blocked-address list').length).toBe(2);
     expect(within(t).getByText('Revoked')).toBeInTheDocument();
     expect(within(t).getByText('Active')).toBeInTheDocument();
@@ -146,9 +146,9 @@ describe('API keys (security admin and above)', () => {
     expect(screen.getByTestId('raw-key')).toBeInTheDocument();
   });
   it('rotates a key after explaining the effect, and shows the new key once', async () => {
-    const { net } = await renderApp({ role: 'SECURITY_ADMIN', route: '/admin/api-keys', routes: base({ 'POST /api-keys/k1/rotate': { status: 201, body: { ...created, id: 'k1', name: 'PishonMarket website' } } }) });
-    await userEvent.click(await screen.findByRole('button', { name: /Rotate PishonMarket website/ }));
-    const dlg = await screen.findByRole('dialog', { name: 'Replace "PishonMarket website"?' });
+    const { net } = await renderApp({ role: 'SECURITY_ADMIN', route: '/admin/api-keys', routes: base({ 'POST /api-keys/k1/rotate': { status: 201, body: { ...created, id: 'k1', name: 'Main website' } } }) });
+    await userEvent.click(await screen.findByRole('button', { name: /Rotate Main website/ }));
+    const dlg = await screen.findByRole('dialog', { name: 'Replace "Main website"?' });
     expect(within(dlg).getByText(/old one stops working immediately/)).toBeInTheDocument();
     await userEvent.click(within(dlg).getByRole('button', { name: 'Replace the key' }));
     expect(await screen.findByRole('dialog', { name: 'New key issued' })).toBeInTheDocument();
@@ -156,8 +156,8 @@ describe('API keys (security admin and above)', () => {
   });
   it('revokes a key after warning that it cannot be turned back on', async () => {
     const { net } = await renderApp({ role: 'SECURITY_ADMIN', route: '/admin/api-keys', routes: base({ 'DELETE /api-keys/k1': { body: { id: 'k1' } } }) });
-    await userEvent.click(await screen.findByRole('button', { name: /Revoke PishonMarket website/ }));
-    const dlg = await screen.findByRole('dialog', { name: 'Revoke "PishonMarket website"?' });
+    await userEvent.click(await screen.findByRole('button', { name: /Revoke Main website/ }));
+    const dlg = await screen.findByRole('dialog', { name: 'Revoke "Main website"?' });
     expect(within(dlg).getByText(/cannot be turned back on/)).toBeInTheDocument();
     await userEvent.click(within(dlg).getByRole('button', { name: 'Revoke the key' }));
     await waitFor(() => expect(net.count('DELETE /api-keys/k1')).toBe(1));
@@ -276,7 +276,7 @@ describe('detection rules (security admin and above)', () => {
 });
 
 describe('audit log (analysts and above)', () => {
-  const entries = [fx.audit(), fx.audit({ id: 'a2', action: 'auth.login', actorLabel: 'ana@pishon.ng', targetId: null, targetType: null, result: 'FAILURE', metadata: null, ipAddress: null, requestId: null })];
+  const entries = [fx.audit(), fx.audit({ id: 'a2', action: 'auth.login', actorLabel: 'ana@example.com', targetId: null, targetType: null, result: 'FAILURE', metadata: null, ipAddress: null, requestId: null })];
   it('is closed to viewers, and open to analysts', async () => {
     const v = await renderApp({ role: 'VIEWER', route: '/admin/audit' });
     expect(await screen.findByRole('heading', { name: 'You do not have access to this page' })).toBeInTheDocument();
@@ -287,12 +287,12 @@ describe('audit log (analysts and above)', () => {
   });
   it('shows readable sentences, with the result as words, and details one click deeper', async () => {
     await renderApp({ role: 'ANALYST', route: '/admin/audit', routes: { 'GET /audit-logs': { body: fx.page(entries) } } });
-    expect(await screen.findByText('sec@pishon.ng blocked an address (198.51.100.7)')).toBeInTheDocument();
-    expect(screen.getByText('ana@pishon.ng signed in and it did not succeed')).toBeInTheDocument();
+    expect(await screen.findByText('sec@example.com blocked an address (198.51.100.7)')).toBeInTheDocument();
+    expect(screen.getByText('ana@example.com signed in and it did not succeed')).toBeInTheDocument();
     const table = screen.getByRole('table', { name: 'Audit log' });
     expect(within(table).getByText('Worked')).toBeInTheDocument();
     expect(within(table).getByText('Did not work')).toBeInTheDocument();
-    await userEvent.click(screen.getByText('sec@pishon.ng blocked an address (198.51.100.7)'));
+    await userEvent.click(screen.getByText('sec@example.com blocked an address (198.51.100.7)'));
     expect(screen.getByText('ip.block')).toBeInTheDocument();
     expect(screen.getByText(/"reason": "attack"/)).toBeInTheDocument();
   });

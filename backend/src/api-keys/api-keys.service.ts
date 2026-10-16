@@ -7,7 +7,7 @@ export class ApiKeysService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: { name: string; scopes: string[]; expiresInDays?: number }, createdBy?: string) {
-    const generated = generateApiKey(process.env.API_KEY_PREFIX || 'PMS_');
+    const generated = generateApiKey(process.env.API_KEY_PREFIX || 'IRS_');
     const expiresAt = dto.expiresInDays && dto.expiresInDays > 0
       ? new Date(Date.now() + dto.expiresInDays * 24 * 60 * 60 * 1000)
       : null;
@@ -27,7 +27,7 @@ export class ApiKeysService {
   }
 
   async verifyApiKey(raw: string) {
-    const prefixLen = (process.env.API_KEY_PREFIX || 'PMS_').length + 16;
+    const prefixLen = (process.env.API_KEY_PREFIX || 'IRS_').length + 16;
     const prefix = raw.slice(0, prefixLen);
     const record = await this.prisma.securityApiKey.findFirst({ where: { keyPrefix: prefix } });
     if (!record) return null;

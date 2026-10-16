@@ -13,7 +13,7 @@ const everything: Record<string, any> = {
   [`GET /reports/incidents/${ID}`]: { body: fx.report() },
   [`GET /reports/technical/${ID}`]: { body: fx.technical() },
   'GET /reports/security-summary': { body: fx.securitySummary() },
-  'GET /auth/assignees': { body: { data: [{ id: 'u2', email: 'ana@pishon.ng', name: 'Ana', role: 'ANALYST' }] } },
+  'GET /auth/assignees': { body: { data: [{ id: 'u2', email: 'ana@example.com', name: 'Ana', role: 'ANALYST' }] } },
   'GET /ips': { body: fx.page([{ ...fx.ipRecord(), blocked: true }]) },
   [`GET /ips/${IP}`]: { body: fx.ipDetail() },
   'GET /security/blocked-ips': { body: { data: [fx.activeBlock()] } },

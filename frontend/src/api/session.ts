@@ -26,9 +26,9 @@ export interface SessionState {
 
 type RefreshOutcome = 'ok' | 'expired' | 'compromised' | 'offline';
 
-const RETURN_KEY = 'pishon-return-to';
-const CHANNEL = 'pishon-session';
-const LOCK = 'pishon-refresh';
+const RETURN_KEY = 'ir-return-to';
+const CHANNEL = 'ir-session';
+const LOCK = 'ir-refresh';
 const SAFETY_MS = 60_000; // refresh this long before the access token runs out
 
 let state: SessionState = { status: 'loading', user: null, reason: null };

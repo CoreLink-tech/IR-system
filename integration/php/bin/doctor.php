@@ -25,7 +25,7 @@ $say = function (string $status, string $msg) use (&$ok): void {
     printf("  %-5s %s\n", $status, $msg);
 };
 
-echo "Pishon security integration check\n\n";
+echo "Security integration check\n\n";
 $config = SecurityConfig::fromEnv();
 
 echo "Settings\n";

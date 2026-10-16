@@ -1,7 +1,7 @@
 # Security Model
 
 ## Threat Model
-- Pishon server is trusted to send events with valid API key.
+- The website server is trusted to send events with valid API key.
 - Attackers may control X-Forwarded-For and X-Real-IP. The API ignores both unless the
   connection comes from a proxy listed in `TRUSTED_PROXIES` (see "Client addresses" below).
 - Addresses are parsed strictly: shorthand, hexadecimal and octal forms such as
@@ -172,7 +172,7 @@ ThrottlerModule global bucket. Tune with THROTTLE_TTL and THROTTLE_LIMIT.
 - COOKIE_SECURE left at its default (on in production); the dashboard served over HTTPS and
   same-site with the API
 - Dashboard served with the headers in frontend/deploy/security-headers.conf
-- DB user privileges on pishon_market.security_* tables
+- DB user privileges on shop.security_* tables
 - Logs shipped off-host
 - Backups of security_* scheduled
-- Pishon PHP middleware enabled with blocklist cache
+- PHP middleware enabled with blocklist cache

@@ -49,7 +49,7 @@ export default function SignInPage() {
   return (
     <main style={{ maxWidth: 440 }}>
       <div className="stack">
-        <h1 style={{ display: 'flex', alignItems: 'center', gap: '.5rem' }}><span style={{ width: 28, display: 'inline-flex' }}><IconShield /></span> Pishon Security</h1>
+        <h1 style={{ display: 'flex', alignItems: 'center', gap: '.5rem' }}><span style={{ width: 28, display: 'inline-flex' }}><IconShield /></span> Security Dashboard</h1>
         {r && <Notice title={r.title}><p style={{ margin: '.3rem 0 0' }}>{r.body}</p></Notice>}
         {changed && <Notice tone="ok" title="Password changed"><p style={{ margin: '.3rem 0 0' }}>Sign in with your new password.</p></Notice>}
         <form className="card" onSubmit={submit} noValidate>

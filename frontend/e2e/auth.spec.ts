@@ -8,8 +8,8 @@ test.describe('sign in and the session, in a real browser', () => {
     await signInAs(page, 'ANALYST');
     const storage = await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }));
     expect(storage).not.toMatch(/eyJ/);
-    expect(await page.evaluate(() => document.cookie)).not.toMatch(/pishon_rt/);        // JavaScript cannot see it
-    const cookie = (await context.cookies()).find((c) => c.name === 'pishon_rt');
+    expect(await page.evaluate(() => document.cookie)).not.toMatch(/ir_rt/);        // JavaScript cannot see it
+    const cookie = (await context.cookies()).find((c) => c.name === 'ir_rt');
     expect(cookie).toBeTruthy();
     expect(cookie!.httpOnly).toBe(true);
     expect(cookie!.sameSite).toBe('Strict');

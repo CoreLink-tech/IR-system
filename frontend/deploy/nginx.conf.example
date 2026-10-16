@@ -1,8 +1,8 @@
-# Example nginx server block for the Pishon Security dashboard (static files only).
+# Example nginx server block for the Security dashboard (static files only).
 #
 # 1. Build:   cd frontend && npm ci && npm run build        (output: frontend/dist)
-# 2. Copy dist/ to /var/www/pishon-dashboard/
-# 3. Edit /var/www/pishon-dashboard/config.json: set "apiBaseUrl" to your API's origin.
+# 2. Copy dist/ to /var/www/ir-dashboard/
+# 3. Edit /var/www/ir-dashboard/config.json: set "apiBaseUrl" to your API's origin.
 # 4. Put security-headers.conf next to this file (or in /etc/nginx/snippets/), set the same API
 #    origin in its connect-src, and set the API's CORS_ORIGINS to this site's exact origin.
 # 5. Replace the domain and certificate paths below, then:  nginx -t && systemctl reload nginx
@@ -27,7 +27,7 @@ server {
   # TLS-END
   server_name dashboard.example.com;
 
-  root /var/www/pishon-dashboard;
+  root /var/www/ir-dashboard;
   index index.html;
   server_tokens off;
   autoindex off;
