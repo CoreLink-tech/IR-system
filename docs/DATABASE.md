@@ -269,3 +269,88 @@ inserts; with a 600 second limit a backlog larger than that is simply finished b
 `GET_LOCK` based lock across several API servers (verified for two concurrent runs on one server).
 These tests need a real database, so in the repository they are skipped unless `RETENTION_TEST_CONFIRM=yes` and
 `DATABASE_URL` point at a scratch database whose name starts with `ir_`.
+
+## Backup and restore
+
+What a backup covers: every `security_*` table and, when it exists, Prisma's `_prisma_migrations` table, from
+one database (the database may be shared with the website; only these tables are touched).
+
+**What a backup does NOT cover, and must be kept separately:** the secrets in the API's environment file,
+`JWT_SECRET`, `JWT_REFRESH_SECRET` and `API_KEY_HASH_PEPPER` (and any other secret added later). Keep a copy in
+your password manager or secret store, never next to the database backups. Measured on the restored drill
+database with newly generated secrets: sign-in with the password still worked (HTTP 201), but **every existing
+API key was rejected (401), which stops event reporting from the website, and every existing session ended
+(401)**. Losing `API_KEY_HASH_PEPPER` means issuing and distributing new API keys.
+
+### Taking a backup
+
+    cd backend
+    DB_NAME=shop DB_USER=ir_backup MYSQL_PWD=... BACKUP_DIR=/var/backups/ir-system ./scripts/backup.sh
+
+It is safe while the system is live (one consistent snapshot, writers are not locked). It writes
+`ir-security-<time>.sql.gz`, a `.sha256` checksum and a `.counts.txt` (the lowest and highest row count of each
+table around the dump), all readable by the owner only, checks the archive before it finishes, and keeps the
+newest `KEEP` (default 14). Exit codes: 0 ok, 2 bad settings or tools missing, 3 no tables found, 4 archive
+failed its own check. Schedule it, and also run it before every upgrade:
+
+    5 2 * * *  cd /srv/ir-system/backend && DB_NAME=shop DB_USER=ir_backup BACKUP_DIR=/var/backups/ir-system ./scripts/backup.sh >> /var/log/ir-backup.log 2>&1
+
+Treat the files as secrets: they hold password hashes, API key hashes and refresh token hashes. Copy them off
+the server (a backup on the same disk is not a backup), encrypted first, for example
+`gpg --symmetric --cipher-algo AES256 file.sql.gz`, or `age -r <recipient>`. Check the copy by running a restore
+drill, not by looking at the file size.
+
+### Restoring
+
+Restore into a NEW, empty database, check it, and only then point the API at it. The script refuses a database
+that already has security tables, refuses a backup whose checksum does not match, and compares every table's row
+count to the backup's recorded range.
+
+1. Stop the API (or leave the damaged one stopped). Create an empty database:
+   `CREATE DATABASE shop_restored DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`
+2. `DB_NAME=shop_restored DB_USER=ir_admin MYSQL_PWD=... ./scripts/restore.sh /var/backups/ir-system/ir-security-<time>.sql.gz`
+   Every table must print `ok`, and the last line must be `restore ok`.
+3. Put the saved secrets back in the API's environment file and set `DATABASE_URL` to the restored database.
+4. If the backup is older than the last release, run `npx prisma migrate status` and then `npx prisma migrate deploy`
+   (see "Existing database" above if the backup has no `_prisma_migrations` table).
+5. Start the API and check `GET /api/v1/health`, sign in to the dashboard, open the incident list, and send one test
+   event with the website's API key.
+6. Switch the website's reporting to it (if the API address changed) and keep the old database until you are sure.
+
+What is lost: everything recorded after the backup's snapshot. In the drill the live system had 114 events when it
+was destroyed and the restore held 55, the state at the moment of the snapshot. Back up as often as you can
+afford to lose data (the recovery point is the time since the last backup). Until the website's reporting is
+switched over, its events are not recorded anywhere; the PHP library queues them on disk, but only up to about
+500 KB and it drops the oldest first (integration/php/README.md), so a long outage loses events.
+
+### Restore drill (performed)
+
+Run on MariaDB 10.11 with the built API (Prisma 6 engine-free client). Steps and results:
+
+1. A live system with an administrator, an API key, 54 events, an automatic block on an attacking address and an
+   incident. A backup was taken while 60 more events were being sent. Recorded count ranges, for example
+   events 54 to 55, addresses 41 to 42.
+2. The source database was dropped.
+3. Refusals: a backup with one byte appended was refused (checksum mismatch, exit 3); a backup without its checksum
+   file was refused (exit 2); neither created any table. A second restore into the already restored database was
+   refused (exit 4).
+4. The restore into an empty database passed every table's count check.
+5. A copy of the API on the restored database: sign-in with the same password worked (201); a refresh token issued
+   before the disaster still worked (201); a wrong password was refused (401); the old API key still worked and the
+   attacker's address was still on the blocklist; the dashboard's incident list showed the incident; a new event was
+   accepted with the old key (201).
+6. With newly generated secrets instead of the originals: sign-in worked, but the old API key and the old refresh
+   token were rejected (401 and 401).
+
+Timing, on a 320,000 event table (119 MB with indexes) in the same sandbox: backup 4.9 s, restore and check 8.7 s,
+archive 4.7 MB. The test data is synthetic and repetitive, so real archives will be larger; real data on real disks
+restores more slowly. Plan the recovery time from a restore drill on your own data, and repeat the drill every
+quarter and after any major upgrade.
+
+### Not verified
+
+A backup user with limited rights (the commands above were run with the database administrator account; the
+minimum grants have not been tested); MySQL 8 and the `mysqldump` tool (MariaDB's `mariadb-dump` was used); the
+gpg and age encryption commands (not run); restoring a backup that contains `_prisma_migrations` and then running
+`prisma migrate status` (the drill database was built from the migration files directly); backups of more than a
+few hundred megabytes.

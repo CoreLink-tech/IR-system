@@ -1,0 +1,6 @@
+
+
+# database backups contain password and key hashes: never commit them
+backups/
+*.sql.gz
+*.sql.gz.sha256
