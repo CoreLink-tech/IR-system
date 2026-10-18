@@ -99,6 +99,7 @@ sql([
   blk('b5', '198.51.100.2', 1, 0, '2026-09-01 00:00:00', '2026-01-02 10:00:00'),
   blk('b6', '198.51.100.3', 0, 0, '2026-09-01 00:00:00', '2026-01-02 10:00:00'),
   blk('b7', '198.51.100.4', 1, 0, '2026-09-01 00:00:00', '2026-01-02 10:00:00'),
+  "INSERT INTO security_refresh_tokens (id, userId, tokenHash, expiresAt, createdAt) VALUES ('rt1','u1','h1','2030-01-01 00:00:00','2026-01-01 08:00:00'),('rt2','u1','h2','2030-01-01 00:00:00','2026-01-02 08:00:00');",
   "INSERT INTO security_events (id, eventType, severity, ipAddress, occurredAt, apiKeyId) VALUES ('e1','LOGIN_FAILED','LOW','203.0.113.9',NOW(3),'k1'),('e2','LOGIN_FAILED','LOW','203.0.113.9',NOW(3),'k1');",
 ].join('\n'), DBS.upgrade);
 
@@ -121,6 +122,8 @@ check('a permanent block outranks temporary ones for the same address', keys.b2 
 check('the later expiry wins between two temporary blocks', keys.b5 === '198.51.100.2' && keys.b4 === '<null>');
 check('an inactive block holds no slot; a single active block holds its address', keys.b6 === '<null>' && keys.b7 === '198.51.100.4');
 check('existing events: matchedRules and externalId are NULL, repeats with no externalId are allowed', rows('SELECT COUNT(*) FROM security_events WHERE matchedRules IS NULL AND externalId IS NULL', DBS.upgrade)[0][0] === '2');
+check('existing sign-ins become one session each, keeping their start time', rows("SELECT COUNT(*) FROM security_refresh_tokens WHERE sessionId = id AND sessionStartedAt = createdAt AND lastUsedAt = createdAt AND revokedReason IS NULL", DBS.upgrade)[0][0] === '2');
+check('existing accounts start at token version 0 with no password change date', rows("SELECT tokenVersion, passwordChangedAt IS NULL FROM security_users WHERE id='u1'", DBS.upgrade)[0].join() === '0,1');
 check('existing users do not have to change their password', rows("SELECT mustChangePassword FROM security_users WHERE id='u1'", DBS.upgrade)[0][0] === '0');
 
 const refuses = (stmt) => { try { sql(stmt, DBS.upgrade); return false; } catch (e) { return /Duplicate entry/i.test(String(e)); } };

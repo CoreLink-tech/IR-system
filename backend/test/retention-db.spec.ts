@@ -59,7 +59,7 @@ d('cleanup against a real database', () => {
       ...Array.from({ length: 50 }, () => ({ actorType: 'API_KEY', action: 'event.ingest', result: 'SUCCESS', createdAt: ago(5) })),     // recent ones stay
       ...Array.from({ length: 20 }, () => ({ actorType: 'USER', action: 'ip.block', result: 'SUCCESS', createdAt: ago(40) }))] });  // other actions are not touched by the shorter limit
 
-    const tok = (i: number, expires: Date, revoked: Date | null) => ({ userId: 'u1', tokenHash: `h${i}`, expiresAt: expires, revokedAt: revoked });
+    const tok = (i: number, expires: Date, revoked: Date | null) => ({ userId: 'u1', tokenHash: `h${i}`, expiresAt: expires, revokedAt: revoked, sessionId: `s${i}`, sessionStartedAt: ago(1) });
     await prisma.securityRefreshToken.createMany({ data: [
       ...Array.from({ length: 100 }, (_, i) => tok(i, ago(30), null)),            // long expired: go
       ...Array.from({ length: 10 }, (_, i) => tok(1000 + i, ago(30), ago(40))),   // revoked and long expired: go

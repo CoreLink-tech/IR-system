@@ -2,7 +2,8 @@ import { BadRequestException, ConflictException, Injectable, UnauthorizedExcepti
 import { ActorContext } from '../common/decorators/current-actor.decorator';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
-import { createHash, randomBytes } from 'crypto';
+import { createHash, randomBytes, randomUUID } from 'crypto';
+import { deviceLabel } from './device-label';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AUDIT_ACTIONS, ROLES } from '../common/constants';
@@ -60,14 +61,21 @@ export class AuthService {
     return { user: this.publicUser(user), ...tokens };
   }
 
-  private async issueTokens(user: any, ctx: { ip?: string; userAgent?: string }) {
+  /**
+   * Issues an access token and a refresh token. Both carry the account's token version (tv) and the
+   * session they belong to (sid). A refresh keeps the same session; a sign-in starts a new one.
+   */
+  private async issueTokens(user: any, ctx: { ip?: string; userAgent?: string }, session?: { id: string; startedAt: Date }) {
+    const sessionId = session?.id ?? randomUUID();
+    const startedAt = session?.startedAt ?? new Date();
+    const tv = user.tokenVersion ?? 0;
     const accessToken = await this.jwt.signAsync(
-      { sub: user.id, email: user.email, role: user.role, type: 'access' },
+      { sub: user.id, email: user.email, role: user.role, type: 'access', tv, sid: sessionId },
       { secret: process.env.JWT_SECRET, expiresIn: process.env.JWT_EXPIRES_IN || '15m' },
     );
     const refreshRaw = randomBytes(48).toString('base64url');
     const refreshToken = await this.jwt.signAsync(
-      { sub: user.id, nonce: refreshRaw, type: 'refresh' },
+      { sub: user.id, nonce: refreshRaw, type: 'refresh', tv, sid: sessionId },
       { secret: process.env.JWT_REFRESH_SECRET, expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d' },
     );
     const expiresAt = new Date(Date.now() + REFRESH_TTL_MS);
@@ -75,6 +83,7 @@ export class AuthService {
       data: {
         userId: user.id, tokenHash: this.hashRefresh(refreshToken), expiresAt,
         ipAddress: ctx.ip, userAgent: ctx.userAgent,
+        sessionId, sessionStartedAt: startedAt, lastUsedAt: new Date(), deviceLabel: deviceLabel(ctx.userAgent),
       },
     });
     return { accessToken, refreshToken };
@@ -90,12 +99,17 @@ export class AuthService {
     if (payload.type !== 'refresh') throw new UnauthorizedException('Invalid token type');
     const hash = this.hashRefresh(refreshToken);
     const stored = await this.prisma.securityRefreshToken.findUnique({ where: { tokenHash: hash } });
+    if (stored && stored.revokedAt && (stored.revokedReason ?? 'rotated') !== 'rotated') {
+      // This session was ended on purpose (signed out, revoked from the sessions page, password changed).
+      // That is not a sign of theft, so it only fails; it does not end the account's other sessions.
+      throw new UnauthorizedException({ message: 'This session has ended. Please sign in again.', code: 'session_ended' });
+    }
     if (stored && stored.revokedAt) {
-      // A token that was already used is being presented again. Either the owner or a
+      // A token that was already replaced is being presented again. Either the owner or a
       // thief holds a copy, and there is no way to tell which, so end every session.
       await this.prisma.securityRefreshToken.updateMany({
         where: { userId: stored.userId, revokedAt: null },
-        data: { revokedAt: new Date() },
+        data: { revokedAt: new Date(), revokedReason: 'reuse_detected' },
       });
       await this.audit.log({
         requestId: ctx.requestId, actorType: 'USER', actorId: stored.userId,
@@ -110,9 +124,13 @@ export class AuthService {
     }
     const user = await this.prisma.securityUser.findUnique({ where: { id: payload.sub } });
     if (!user || !user.isActive) throw new UnauthorizedException('User inactive');
+    // A password change, "sign out everywhere" or an administrator reset raised the version after this token was issued.
+    if ((payload.tv ?? 0) !== (user.tokenVersion ?? 0)) {
+      throw new UnauthorizedException({ message: 'This session has ended. Please sign in again.', code: 'session_ended' });
+    }
 
-    await this.prisma.securityRefreshToken.update({ where: { id: stored.id }, data: { revokedAt: new Date() } });
-    const tokens = await this.issueTokens(user, ctx);
+    await this.prisma.securityRefreshToken.update({ where: { id: stored.id }, data: { revokedAt: new Date(), revokedReason: 'rotated' } });
+    const tokens = await this.issueTokens(user, ctx, { id: stored.sessionId, startedAt: stored.sessionStartedAt });
     await this.audit.log({
       requestId: ctx.requestId, actorType: 'USER', actorId: user.id, actorLabel: user.email,
       action: AUDIT_ACTIONS.REFRESH, result: 'SUCCESS', ipAddress: ctx.ip, userAgent: ctx.userAgent,
@@ -141,7 +159,7 @@ export class AuthService {
     const hash = this.hashRefresh(refreshToken);
     await this.prisma.securityRefreshToken.updateMany({
       where: { tokenHash: hash, revokedAt: null },
-      data: { revokedAt: new Date() },
+      data: { revokedAt: new Date(), revokedReason: 'logout' },
     });
   }
 
@@ -156,7 +174,7 @@ export class AuthService {
     const passwordHash = await bcrypt.hash(dto.password, 12);
     const user = await this.prisma.securityUser.create({
       data: {
-        email, passwordHash, name: dto.name ?? null, role: dto.role,
+        email, passwordHash, name: dto.name ?? null, role: dto.role, passwordChangedAt: new Date(),
         ...(dto.requirePasswordChange ? { mustChangePassword: true } : {}),
       },
     });
@@ -193,8 +211,12 @@ export class AuthService {
       await fail('same_password');
       throw new BadRequestException('New password must be different from the current one');
     }
-    await this.prisma.securityUser.update({ where: { id: user.id }, data: { passwordHash: await bcrypt.hash(newPassword, 12), mustChangePassword: false } });
-    await this.prisma.securityRefreshToken.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } });
+    // Raising tokenVersion ends every access token of this account at once, not after 15 minutes.
+    await this.prisma.securityUser.update({
+      where: { id: user.id },
+      data: { passwordHash: await bcrypt.hash(newPassword, 12), mustChangePassword: false, passwordChangedAt: new Date(), tokenVersion: { increment: 1 } },
+    });
+    await this.prisma.securityRefreshToken.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: 'password_changed' } });
     await this.audit.log({
       requestId: ctx.requestId, actorType: 'USER', actorId: user.id, actorLabel: user.email,
       action: AUDIT_ACTIONS.PASSWORD_CHANGE, result: 'SUCCESS', ipAddress: ctx.ip, userAgent: ctx.userAgent,

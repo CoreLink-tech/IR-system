@@ -88,11 +88,32 @@ in the database, and an event sent twice with the same `event_id` is stored once
   same-site path (no open redirect).
 - The cookie must be same-site with the API (for example `dashboard.example.com` and
   `api.example.com`), because `SameSite=Strict` cookies are not sent for a different site.
-- Known limit: access tokens are not revoked one by one. The server re-reads the account on every
-  request, so deactivating an account or changing its role takes effect at once, and an admin
-  password reset leaves old access tokens able to do nothing but change the password (the
-  `mustChangePassword` check). But a password change by the person themselves revokes refresh tokens
-  only: an access token already issued keeps working until it expires (15 minutes by default).
+
+## Sessions and ending them
+
+A sign-in is a session. The refresh token is replaced on every use, so each token row carries a
+`sessionId` that stays the same, which is what the sessions page lists (device label, address, started,
+last used). Every access and refresh token carries the account's **token version** (`tv`) and its session
+(`sid`).
+
+- **Ending everything at once.** Changing your own password, "sign out everywhere", an administrator
+  resetting a password or signing an account out, all raise the account's token version. The server reads
+  the account on every request already, so a token with an old version is refused immediately with
+  `401 session_ended`. There is no waiting for the 15 minute access token to expire. Tokens issued before
+  this feature existed carry no version and count as version 0, so deploying it signs nobody out.
+- **Ending one session.** Its refresh token stops working at once. Its current access token (at most 15
+  minutes old) keeps working until it expires, because checking the session on every request would add a
+  second database lookup to every request. If that delay matters for a lost device, use "sign out
+  everywhere" instead, which has no delay.
+- **Why two different responses to a revoked token.** A token that was already replaced and is presented
+  again means two parties hold the same token chain (the owner and possibly a thief), so every session of
+  that account is ended (`refresh_token_reuse`). A session that was ended on purpose (signed out, ended from
+  the sessions page, password changed) only fails with `session_ended`; it does not sign the owner out of
+  their other devices. Each refresh token records why it was ended (`revokedReason`).
+- A super admin can list and end another account's sessions, or sign the account out everywhere. Every one
+  of these is in the audit log (`auth.session_revoke`, `auth.sessions_revoke_all`).
+- Expired and revoked tokens are removed by the cleanup job (see docs/DATABASE.md). A revoked token that has
+  not expired yet is kept, so replay of a stolen one is still recognised.
 
 ## Dashboard hosting
 `frontend/deploy/nginx.conf.example` and `security-headers.conf` set a strict Content-Security-Policy

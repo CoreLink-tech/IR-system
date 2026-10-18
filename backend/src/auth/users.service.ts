@@ -63,7 +63,8 @@ export class UsersService {
         const next = await tx.securityUser.update({ where: { id }, data: { role, isActive } });
         // A switched-off account must not keep working through a refresh token it already holds.
         if (!isActive && target.isActive) {
-          await tx.securityRefreshToken.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date() } });
+          await tx.securityRefreshToken.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: 'user_disabled' } });
+          await tx.securityUser.update({ where: { id }, data: { tokenVersion: { increment: 1 } } });
         }
         return { before: target, updated: next };
       }, { isolationLevel: 'Serializable' }));
@@ -107,9 +108,9 @@ export class UsersService {
     if (!target) throw new NotFoundException('User not found');
     await this.prisma.securityUser.update({
       where: { id },
-      data: { passwordHash: await bcrypt.hash(newPassword, 12), mustChangePassword: true },
+      data: { passwordHash: await bcrypt.hash(newPassword, 12), mustChangePassword: true, passwordChangedAt: new Date(), tokenVersion: { increment: 1 } },
     });
-    const revoked = await this.prisma.securityRefreshToken.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date() } });
+    const revoked = await this.prisma.securityRefreshToken.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: 'admin_reset' } });
     await this.audit.log({
       requestId: actor.requestId, actorType: 'USER', actorId: actor.id, actorLabel: actor.label,
       action: AUDIT_ACTIONS.USER_PASSWORD_RESET, targetType: 'user', targetId: id, result: 'SUCCESS',

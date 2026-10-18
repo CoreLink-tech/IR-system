@@ -5,6 +5,7 @@ import request from 'supertest';
 import { AuthController } from '../src/auth/auth.controller';
 import { AuthService } from '../src/auth/auth.service';
 import { UsersService } from '../src/auth/users.service';
+import { SessionsService } from '../src/auth/sessions.service';
 import { AuditController } from '../src/audit/audit.controller';
 import { BlockingController } from '../src/blocking/blocking.controller';
 import { BlockingService } from '../src/blocking/blocking.service';
@@ -40,6 +41,10 @@ describe('Controllers (real validation and role checks, services stubbed)', () =
     createUser: jest.fn(async (d: any) => ({ id: 'u9', email: d.email, role: d.role })),
     changePassword: jest.fn(async () => ({ ok: true })),
   };
+  const sessions = {
+    list: jest.fn(async () => []), revoke: jest.fn(async () => ({ ok: true })), revokeAll: jest.fn(async () => ({ ok: true })),
+    userEmail: jest.fn(async () => 'someone@example.com'),
+  };
   const blocking = {
     allowlist: jest.fn(async () => []), block: jest.fn(async () => ({ id: 'b1' })), unblock: jest.fn(async () => ({ ok: true })),
     allow: jest.fn(async () => ({ id: 'a1' })), unallow: jest.fn(async () => ({ ok: true })),
@@ -56,7 +61,7 @@ describe('Controllers (real validation and role checks, services stubbed)', () =
     const mod = await Test.createTestingModule({
       controllers: [AuthController, AuditController, BlockingController, StatisticsController, IncidentsController, IpsController, ApiKeysController],
       providers: [
-        { provide: AuthService, useValue: auth }, { provide: UsersService, useValue: {} }, { provide: BlockingService, useValue: blocking },
+        { provide: AuthService, useValue: auth }, { provide: UsersService, useValue: {} }, { provide: SessionsService, useValue: sessions }, { provide: BlockingService, useValue: blocking },
         { provide: StatisticsService, useValue: stats }, { provide: IncidentsService, useValue: incidents },
         { provide: IpsService, useValue: ips }, { provide: IpIntelligenceService, useValue: intel },
         { provide: ApiKeysService, useValue: keys }, { provide: PrismaService, useValue: prisma },
@@ -115,6 +120,23 @@ describe('Controllers (real validation and role checks, services stubbed)', () =
       await as(http().post('/api/v1/auth/change-password').send({ ...body, newPassword: 'too-short' }), 'VIEWER').expect(400);
       await as(http().post('/api/v1/auth/change-password').send(body), 'VIEWER').expect(201);
       expect(auth.changePassword).toHaveBeenCalledWith('u1', 'old-password-1', 'a-much-longer-new-pw', expect.objectContaining({ ip: '203.0.113.5' }));
+    });
+
+    it('every signed-in role can see and end its own sessions; only the super admin can touch other accounts', async () => {
+      await http().get('/api/v1/auth/sessions').expect(401);
+      for (const role of ['VIEWER', 'ANALYST', 'SECURITY_ADMIN', 'SUPER_ADMIN']) {
+        await as(http().get('/api/v1/auth/sessions'), role).expect(200);
+        await as(http().delete('/api/v1/auth/sessions/abc'), role).expect(200);
+        await as(http().post('/api/v1/auth/sessions/revoke-all'), role).expect(201);
+      }
+      for (const role of ['VIEWER', 'ANALYST', 'SECURITY_ADMIN']) {
+        await as(http().get('/api/v1/auth/users/u2/sessions'), role).expect(403);
+        await as(http().delete('/api/v1/auth/users/u2/sessions/abc'), role).expect(403);
+        await as(http().post('/api/v1/auth/users/u2/sessions/revoke-all'), role).expect(403);
+      }
+      await as(http().get('/api/v1/auth/users/u2/sessions'), 'SUPER_ADMIN').expect(200);
+      await as(http().delete('/api/v1/auth/users/u2/sessions/abc'), 'SUPER_ADMIN').expect(200);
+      await as(http().post('/api/v1/auth/users/u2/sessions/revoke-all'), 'SUPER_ADMIN').expect(201);
     });
   });
 

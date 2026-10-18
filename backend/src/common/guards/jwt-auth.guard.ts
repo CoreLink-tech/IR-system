@@ -35,6 +35,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       ip: extractIp(req),
       userAgent: req.headers?.['user-agent'] as string | undefined,
       requestId: req.requestId,
+      sessionId: result.sessionId,
     };
     req.actor = actor;
     // After an administrator resets a password, the account may do nothing except look at

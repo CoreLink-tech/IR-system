@@ -29,7 +29,24 @@ and a `Set-Cookie` (cookie mode). `user` is { id, email, name, role, isActive, m
 Body: { "refreshToken": "..." } for body mode. With no body token the cookie is used (cookie
 mode: needs `Origin` and `X-CSRF-Token`). Refresh tokens rotate; the answer carries the new
 token (body or cookie) and, in cookie mode, a new `csrfToken`. Re-using an old token ends
-all of that user's sessions and answers 401 with `code: "refresh_token_reuse"`.
+all of that user's sessions and answers 401 with `code: "refresh_token_reuse"`. A session that was ended
+on purpose (signed out, ended from the sessions page, password changed) answers 401 with
+`code: "session_ended"` and does not affect the account's other sessions.
+
+### Sessions
+    GET    /api/v1/auth/sessions                          any role: my active sessions, newest use first
+    DELETE /api/v1/auth/sessions/:id                      any role: end one of MY sessions
+    POST   /api/v1/auth/sessions/revoke-all               any role: sign me out everywhere, at once
+    GET    /api/v1/auth/users/:id/sessions                super admin: another account's sessions
+    DELETE /api/v1/auth/users/:id/sessions/:sessionId     super admin: end one of its sessions
+    POST   /api/v1/auth/users/:id/sessions/revoke-all     super admin: sign that account out everywhere
+
+A session is { id, device, ipAddress, createdAt, lastUsedAt, expiresAt, current }. `device` is a label such
+as "Chrome on Windows", made from the browser's user agent for the owner to recognise. Tokens are never
+returned. The routes for "my" sessions take the account from the access token, never from the URL: an id that
+belongs to someone else answers 404. Ending one session stops its refresh token at once; its access token (at
+most 15 minutes old) works until it expires. "Sign out everywhere" and a password change end access tokens
+immediately (`401 session_ended`).
 
 ### POST /api/v1/auth/logout
 Body: { "refreshToken": "..." } or the cookie (same checks as refresh). Clears the cookie.
@@ -184,7 +201,8 @@ POST   /api/v1/rules/:code/reset      body: { reason? } puts every setting back 
     }
 
 `message` is a string, or an array of strings for validation errors. `code` values:
-`refresh_token_reuse` (a used refresh token was presented: all sessions ended), `no_session`,
+`refresh_token_reuse` (a used refresh token was presented: all sessions ended), `session_ended` (this
+session was ended on purpose or by a password change; sign in again), `no_session`,
 `csrf_invalid`, `origin_not_allowed`, `password_change_required`, `self_change_forbidden`,
 `self_reset_forbidden`, `last_super_admin`.
 

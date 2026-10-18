@@ -15,7 +15,7 @@ const ADMIN = ['SUPER_ADMIN', 'SECURITY_ADMIN'];
 
 describe('route inventory', () => {
   it('finds every route (guards against the inventory silently shrinking)', () => {
-    expect(routes.length).toBe(44);
+    expect(routes.length).toBe(50);
   });
 
   it('has no duplicated method and path, because the first registration would shadow the second', () => {
@@ -44,9 +44,14 @@ describe('role rules', () => {
     for (const r of jwtRoutes.filter((x) => x.roles.length > 0)) expect(r.guards).toContain('RolesGuard');
   });
 
-  it('viewers can never change anything', () => {
-    const bad = routes.filter((r) => MUTATING.has(r.method) && r.roles.includes('VIEWER')).map((r) => r.key);
+  // The only changes a viewer may make are to their OWN sign-ins. These routes take the account from the
+  // access token, never from the URL (test/sessions-http.spec.ts proves another account's session id is a 404).
+  const SELF_SERVICE = ['DELETE /api/v1/auth/sessions/:id', 'POST /api/v1/auth/sessions/revoke-all'];
+
+  it('viewers can never change anything, except ending their own sessions', () => {
+    const bad = routes.filter((r) => MUTATING.has(r.method) && r.roles.includes('VIEWER') && !SELF_SERVICE.includes(r.key)).map((r) => r.key);
     expect(bad).toEqual([]);
+    for (const k of SELF_SERVICE) expect(byKey.get(k)!.roles).toEqual(ALL);
   });
 
   it('only the super admin can create users', () => {

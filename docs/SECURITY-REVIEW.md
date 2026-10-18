@@ -83,6 +83,29 @@ that fails without it. Items marked "not verified" say how the owner can check t
 - Fix: `tsconfig.build.json` now compiles `src/` only.
 - Regression test: `test/build-layout.spec.ts`. A build-and-start check belongs in the CI workstream.
 
+### F-11 A password change did not end the account's other access tokens (open item 2)
+- Where: changing your own password revoked refresh tokens only. An access token already issued kept working
+  for up to 15 minutes, on every device, including one in the hands of whoever the password change was meant
+  to lock out.
+- Fix: a per-account token version carried in every token and checked on every request (the account is read
+  anyway, so there is no extra query). A password change, "sign out everywhere", an administrator password
+  reset or sign-out raise it, and every token of the account is refused at once (`401 session_ended`).
+  Alternative considered: shorter access tokens (for example 5 minutes), which only narrow the window and
+  multiply refreshes. Remaining limit: ending a single session leaves its access token valid until it expires.
+- Regression tests: `test/sessions-http.spec.ts` ("changing your own password ends the access tokens of your
+  other devices at once", "sign out everywhere ...", "an administrator resetting a password ...", tokens from
+  before the feature keep working). Removing the check, or the version bump on password change, makes them fail.
+
+### F-12 Deliberately ended sessions were treated as theft (found while building the sessions page)
+- Where: any revoked refresh token that was presented again ended every session of the account. With a
+  sessions page that lets an owner (or an administrator) end one device, that device's next refresh would have
+  signed the owner out everywhere.
+- Fix: each token records why it ended. Only a token that was already replaced still triggers the theft
+  response; a session ended on purpose only fails (`session_ended`).
+- Regression tests: "ending one session ... does NOT end every session" and "a token that was already replaced
+  and is presented again still ends every session (theft response kept)". Older rows with no recorded reason are
+  treated as replaced, as before.
+
 ## Verification notes for workstream 1
 - Backend: 715 tests passing, run against the repository's Prisma 5 package set (the Prisma engine is
   not needed by these tests, which use in-memory stand-ins).

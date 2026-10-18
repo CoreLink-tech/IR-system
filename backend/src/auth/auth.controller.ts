@@ -1,10 +1,11 @@
 import {
-  Body, Controller, ForbiddenException, Get, Param, Patch, Post, Req, Res, UnauthorizedException, UseGuards,
+  Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Req, Res, UnauthorizedException, UseGuards,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { AuthService, REFRESH_TTL_MS } from './auth.service';
 import { UsersService } from './users.service';
+import { SessionsService } from './sessions.service';
 import { ChangePasswordDto, CreateUserDto, LoginDto, RefreshDto, ResetUserPasswordDto, UpdateUserDto } from './dto';
 import { extractIp } from '../common/utils/ip.util';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -24,7 +25,7 @@ const LOGIN_THROTTLE = {
 
 @Controller('api/v1/auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService, private readonly users: UsersService) {}
+  constructor(private readonly auth: AuthService, private readonly users: UsersService, private readonly sessions: SessionsService) {}
 
   @Public()
   // Password guessing is the most attractive target on a security product, so signing in
@@ -139,6 +140,60 @@ export class AuthController {
   @Post('users/:id/reset-password')
   resetPassword(@Param('id') id: string, @Body() dto: ResetUserPasswordDto, @CurrentActor() actor: ActorContext) {
     return this.users.resetPassword(id, dto.newPassword, actor);
+  }
+
+  // ---- Sessions: the sign-ins of an account -------------------------------------------------
+
+  /** The signed-in account's own sessions. The one making this request is marked current. */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(...ALL_ROLES)
+  @Get('sessions')
+  async listSessions(@CurrentActor() actor: ActorContext, @Res({ passthrough: true }) res: Response) {
+    res.setHeader('Cache-Control', 'no-store');
+    return { data: await this.sessions.list(actor.id!, actor.sessionId) };
+  }
+
+  /** Signs the account out everywhere, this device included, and ends every access token at once. */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(...ALL_ROLES)
+  @Post('sessions/revoke-all')
+  async revokeAllMine(@CurrentActor() actor: ActorContext, @Req() req: any, @Res({ passthrough: true }) res: Response) {
+    const out = await this.sessions.revokeAll(actor.id!, actor);
+    if (readRefreshCookie(req)) res.append('Set-Cookie', clearRefreshCookie());
+    return out;
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(...ALL_ROLES)
+  @Delete('sessions/:id')
+  async revokeMine(@Param('id') id: string, @CurrentActor() actor: ActorContext, @Req() req: any, @Res({ passthrough: true }) res: Response) {
+    const out = await this.sessions.revoke(actor.id!, id, actor);
+    if (id === actor.sessionId && readRefreshCookie(req)) res.append('Set-Cookie', clearRefreshCookie());
+    return out;
+  }
+
+  /** Another account's sessions, for a super admin. */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(ROLES.SUPER_ADMIN)
+  @Get('users/:id/sessions')
+  async listUserSessions(@Param('id') id: string, @Res({ passthrough: true }) res: Response) {
+    await this.sessions.userEmail(id);
+    res.setHeader('Cache-Control', 'no-store');
+    return { data: await this.sessions.list(id) };
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(ROLES.SUPER_ADMIN)
+  @Post('users/:id/sessions/revoke-all')
+  async revokeAllForUser(@Param('id') id: string, @CurrentActor() actor: ActorContext) {
+    return this.sessions.revokeAll(id, actor, await this.sessions.userEmail(id));
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(ROLES.SUPER_ADMIN)
+  @Delete('users/:id/sessions/:sessionId')
+  async revokeForUser(@Param('id') id: string, @Param('sessionId') sessionId: string, @CurrentActor() actor: ActorContext) {
+    return this.sessions.revoke(id, sessionId, actor, await this.sessions.userEmail(id));
   }
 
   @UseGuards(JwtAuthGuard)

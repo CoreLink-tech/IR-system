@@ -9,6 +9,8 @@ export interface ActorContext {
   ip?: string;
   userAgent?: string;
   requestId?: string;
+  /** The sign-in this request belongs to (from the access token). */
+  sessionId?: string;
 }
 
 export const CurrentActor = createParamDecorator(

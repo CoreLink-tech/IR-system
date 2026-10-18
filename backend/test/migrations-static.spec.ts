@@ -60,6 +60,12 @@ describe('migrations', () => {
 
   it('the guard itself reads the schema (11 tables)', () => { expect(models()).toHaveLength(11); });
 
+  it('the schema uses only comment styles Prisma accepts (// and ///), never /* */', () => {
+    // A block comment is not valid Prisma syntax. It cost a failed schema parse once, and the Prisma
+    // engine that would have said so is not always available where the schema is edited.
+    expect(schema).not.toMatch(/\/\*/);
+  });
+
   it('never contain a statement that discards data', () => {
     // A migration that drops a table or column must be a deliberate, reviewed change with its own test.
     expect(allSql).not.toMatch(/\bDROP\s+(TABLE|COLUMN|DATABASE)\b|\bTRUNCATE\b/i);

@@ -18,6 +18,8 @@ model SecurityUser {
   // Set when an administrator resets or issues a password. The account can sign in, but
   // every route except "who am I" and "change password" is refused until it is changed.
   mustChangePassword Boolean @default(false)
+  tokenVersion Int @default(0)
+  passwordChangedAt DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -35,13 +37,21 @@ model SecurityRefreshToken {
   tokenHash  String    @unique
   expiresAt  DateTime
   revokedAt  DateTime?
+  /// Why it was ended: rotated, logout, session_revoked, revoked_all, password_changed, admin_reset, user_disabled, reuse_detected. Empty on older rows (treated as rotated).
+  revokedReason String?
   userAgent  String?
   ipAddress  String?
   createdAt  DateTime  @default(now())
+  /// One device is one session. These stay the same when the token is replaced.
+  sessionId  String
+  sessionStartedAt DateTime
+  lastUsedAt DateTime?
+  deviceLabel String?
 
   user SecurityUser @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([sessionId])
   @@map("security_refresh_tokens")
 }
 

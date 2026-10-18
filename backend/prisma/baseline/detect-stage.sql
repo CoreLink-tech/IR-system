@@ -51,5 +51,10 @@ FROM (
             'security_events_incidentId_idx','security_events_severity_idx','security_events_riskLevel_idx',
             'security_api_keys_keyPrefix_idx')
     ) o
+    UNION ALL
+    SELECT '20260101000600_stage10_sessions_and_token_version', 7, 8,
+        (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'security_users' AND column_name IN ('tokenVersion', 'passwordChangedAt'))
+      + (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'security_refresh_tokens' AND column_name IN ('sessionId', 'sessionStartedAt', 'lastUsedAt', 'deviceLabel', 'revokedReason'))
+      + (SELECT COUNT(DISTINCT index_name) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'security_refresh_tokens' AND index_name = 'security_refresh_tokens_sessionId_idx')
 ) t
 ORDER BY ord;

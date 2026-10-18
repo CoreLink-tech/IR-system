@@ -19,6 +19,7 @@ import { validateConfig } from '../src/config/validate-config';
 import { AuthController } from '../src/auth/auth.controller';
 import { AuthService } from '../src/auth/auth.service';
 import { UsersService } from '../src/auth/users.service';
+import { SessionsService } from '../src/auth/sessions.service';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { AuditService } from '../src/audit/audit.service';
 
@@ -237,7 +238,7 @@ describe('over HTTP: the login record uses the one address function', () => {
       imports: [JwtModule.register({})],
       controllers: [AuthController],
       providers: [
-        AuthService, { provide: UsersService, useValue: {} }, { provide: PrismaService, useValue: prisma },
+        AuthService, { provide: UsersService, useValue: {} }, { provide: SessionsService, useValue: {} }, { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: { log: async (e: any) => { audit.push(e); } } },
       ],
     }).compile();
