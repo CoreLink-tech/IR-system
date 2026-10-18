@@ -52,6 +52,7 @@ describe('sessions and access-token revocation (real guards over HTTP)', () => {
           return u && select ? Object.fromEntries(Object.keys(select).map((k) => [k, u[k]])) : u;
         },
         update: async ({ where, data }: any) => applyData(users.find((u) => u.id === where.id), data),
+        create: async ({ data }: any) => { const u = { id: `new${users.length}`, isActive: true, mustChangePassword: false, tokenVersion: 0, ...data }; users.push(u); return u; },
       },
       securityRefreshToken: {
         create: async ({ data }: any) => { const t = { id: `t${++seq}`, revokedAt: null, revokedReason: null, createdAt: new Date(), ...data }; tokens.push(t); return t; },
@@ -237,6 +238,58 @@ describe('sessions and access-token revocation (real guards over HTTP)', () => {
     const admin = await login('admin@example.com'); const viewer = await login('viewer@example.com');
     await http().post('/api/v1/auth/users/viewer/sessions/revoke-all').set('Authorization', `Bearer ${admin.access}`).expect(201);
     await me(viewer.access).expect(401);
+  });
+
+  describe('password policy over HTTP', () => {
+    const asAdmin = async () => (await login('admin@example.com')).access;
+    const weak = 'password1234';
+    const strong = 'Violet-Harbor-Lantern-84';
+
+    it('a weak password is refused when creating an account, with every reason as a readable sentence', async () => {
+      const t = await asAdmin();
+      const r = await http().post('/api/v1/auth/users').set('Authorization', `Bearer ${t}`).send({ email: 'new@example.com', password: weak, role: 'ANALYST' }).expect(400);
+      expect(r.body.code).toBe('weak_password');
+      expect(Array.isArray(r.body.message)).toBe(true);
+      expect(r.body.message.join(' ')).toMatch(/common password/);
+      expect(users.find((u) => u.email === 'new@example.com')).toBeUndefined();
+      expect(JSON.stringify(r.body)).not.toContain(weak);
+      await http().post('/api/v1/auth/users').set('Authorization', `Bearer ${t}`).send({ email: 'new@example.com', password: strong, role: 'ANALYST' }).expect(201);
+    });
+
+    it('a password with the person\'s own email in it is refused when creating an account', async () => {
+      const t = await asAdmin();
+      const r = await http().post('/api/v1/auth/users').set('Authorization', `Bearer ${t}`).send({ email: 'chidinma.eze@example.com', name: 'Chidinma Eze', password: 'Chidinma-and-her-Violet-Lantern', role: 'ANALYST' }).expect(400);
+      expect(r.body.message.join(' ')).toMatch(/email address or your name/);
+    });
+
+    it('a too-short password gets the plain length message from the request check', async () => {
+      const t = await asAdmin();
+      const r = await http().post('/api/v1/auth/users').set('Authorization', `Bearer ${t}`).send({ email: 'n@example.com', password: 'short', role: 'ANALYST' }).expect(400);
+      expect(JSON.stringify(r.body.message)).toContain('at least 12 characters long');
+    });
+
+    it('changing your own password: the current password is still required, a weak new one is refused and nothing else changes', async () => {
+      const { access } = await login('viewer@example.com'); const other = await login('viewer@example.com', IPHONE);
+      const before = users[1].passwordHash;
+      await http().post('/api/v1/auth/change-password').set('Authorization', `Bearer ${access}`).send({ currentPassword: 'Wrong-Current-Pw-1', newPassword: strong }).expect(401);
+      const r = await http().post('/api/v1/auth/change-password').set('Authorization', `Bearer ${access}`).send({ currentPassword: PW, newPassword: weak }).expect(400);
+      expect(r.body.code).toBe('weak_password');
+      expect(users[1].passwordHash).toBe(before);
+      expect(users[1].tokenVersion).toBe(0);                                  // a refused change signs nobody out
+      await me(other.access).expect(200);
+      expect(audit.some((a) => a.action === 'auth.password_change' && a.result === 'FAILURE' && a.metadata.reason === 'weak_password')).toBe(true);
+      expect(JSON.stringify(audit)).not.toContain(weak);
+      await http().post('/api/v1/auth/change-password').set('Authorization', `Bearer ${access}`).send({ currentPassword: PW, newPassword: strong }).expect(201);
+    });
+
+    it('an administrator\'s temporary password must pass the same policy, checked against the target account', async () => {
+      const t = await asAdmin();
+      await http().post('/api/v1/auth/users/viewer/reset-password').set('Authorization', `Bearer ${t}`).send({ newPassword: weak }).expect(400);
+      const own = await http().post('/api/v1/auth/users/viewer/reset-password').set('Authorization', `Bearer ${t}`).send({ newPassword: 'viewer-is-my-name-1' }).expect(400);
+      expect(own.body.message.join(' ')).toMatch(/email address or your name/);
+      expect(users[1].tokenVersion).toBe(0);
+      await http().post('/api/v1/auth/users/viewer/reset-password').set('Authorization', `Bearer ${t}`).send({ newPassword: strong }).expect(201);
+    });
   });
 
   it('refuses a missing, unknown or over-long session id', async () => {

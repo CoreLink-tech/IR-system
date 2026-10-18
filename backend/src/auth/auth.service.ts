@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { createHash, randomBytes, randomUUID } from 'crypto';
 import { deviceLabel } from './device-label';
+import { assertStrongPassword, checkPassword } from './password-policy';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AUDIT_ACTIONS, ROLES } from '../common/constants';
@@ -169,6 +170,7 @@ export class AuthService {
   ) {
     if (!Object.values(ROLES).includes(dto.role as any)) throw new BadRequestException('Invalid role');
     const email = dto.email.toLowerCase();
+    assertStrongPassword(dto.password, { email, name: dto.name });
     const exists = await this.prisma.securityUser.findUnique({ where: { email } });
     if (exists) throw new ConflictException('Email already exists');
     const passwordHash = await bcrypt.hash(dto.password, 12);
@@ -212,6 +214,11 @@ export class AuthService {
       throw new BadRequestException('New password must be different from the current one');
     }
     // Raising tokenVersion ends every access token of this account at once, not after 15 minutes.
+    const strength = checkPassword(newPassword, { email: user.email, name: user.name });
+    if (!strength.ok) {
+      await fail('weak_password');
+      assertStrongPassword(newPassword, { email: user.email, name: user.name });
+    }
     await this.prisma.securityUser.update({
       where: { id: user.id },
       data: { passwordHash: await bcrypt.hash(newPassword, 12), mustChangePassword: false, passwordChangedAt: new Date(), tokenVersion: { increment: 1 } },

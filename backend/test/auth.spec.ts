@@ -194,19 +194,19 @@ describe('AuthService.logout', () => {
 describe('AuthService.createUser', () => {
   it('hashes the password and never returns the hash', async () => {
     const s = store();
-    const u = await s.svc.createUser({ email: 'New@Example.com', password: 'a-long-password-1', name: 'New', role: 'ANALYST' });
+    const u = await s.svc.createUser({ email: 'New@Example.com', password: 'Violet-Harbor-Lantern-84', name: 'New', role: 'ANALYST' });
     expect(u).toEqual({ id: expect.any(String), email: 'new@example.com', name: 'New', role: 'ANALYST', isActive: true, mustChangePassword: false });
-    expect(s.users[0].passwordHash).not.toContain('a-long-password-1');
-    expect(await bcrypt.compare('a-long-password-1', s.users[0].passwordHash)).toBe(true);
+    expect(s.users[0].passwordHash).not.toContain('Violet-Harbor-Lantern-84');
+    expect(await bcrypt.compare('Violet-Harbor-Lantern-84', s.users[0].passwordHash)).toBe(true);
   });
 
   it('rejects a duplicate email', async () => {
     const s = await withUser(store());
-    await expect(s.svc.createUser({ email: 'ADMIN@example.com', password: 'a-long-password-1', role: 'ANALYST' })).rejects.toBeInstanceOf(ConflictException);
+    await expect(s.svc.createUser({ email: 'ADMIN@example.com', password: 'Violet-Harbor-Lantern-84', role: 'ANALYST' })).rejects.toBeInstanceOf(ConflictException);
   });
 
   it('rejects an unknown role with a 400, not a conflict', async () => {
-    await expect(store().svc.createUser({ email: 'x@example.com', password: 'a-long-password-1', role: 'GOD' })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(store().svc.createUser({ email: 'x@example.com', password: 'Violet-Harbor-Lantern-84', role: 'GOD' })).rejects.toBeInstanceOf(BadRequestException);
   });
 });
 
@@ -214,14 +214,14 @@ describe('AuthService.createUser auditing', () => {
   it('records who created the account, and its role, but never the password', async () => {
     const s = store();
     await s.svc.createUser(
-      { email: 'new@example.com', password: 'a-long-password-1', role: 'ANALYST' },
+      { email: 'new@example.com', password: 'Violet-Harbor-Lantern-84', role: 'ANALYST' },
       { id: 'u0', label: 'root@example.com', ip: '203.0.113.5', userAgent: 'jest', requestId: 'r9' } as any,
     );
     expect(s.audit.log).toHaveBeenCalledWith(expect.objectContaining({
       action: 'user.create', actorType: 'USER', actorId: 'u0', actorLabel: 'root@example.com', targetType: 'user',
       result: 'SUCCESS', metadata: { email: 'new@example.com', role: 'ANALYST', requirePasswordChange: false },
     }));
-    expect(JSON.stringify((s.audit.log as jest.Mock).mock.calls)).not.toContain('a-long-password-1');
+    expect(JSON.stringify((s.audit.log as jest.Mock).mock.calls)).not.toContain('Violet-Harbor-Lantern-84');
   });
 });
 

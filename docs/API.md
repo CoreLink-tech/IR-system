@@ -204,7 +204,8 @@ POST   /api/v1/rules/:code/reset      body: { reason? } puts every setting back 
 `refresh_token_reuse` (a used refresh token was presented: all sessions ended), `session_ended` (this
 session was ended on purpose or by a password change; sign in again), `no_session`,
 `csrf_invalid`, `origin_not_allowed`, `password_change_required`, `self_change_forbidden`,
-`self_reset_forbidden`, `last_super_admin`.
+`self_reset_forbidden`, `last_super_admin`, `weak_password` (the new password failed the password policy; `message`
+lists every reason in plain sentences, see docs/SECURITY.md).
 
 Every response, including errors raised by a guard (401, 403) and rate limit refusals (429), carries
 a `requestId` in the body and in the `X-Request-Id` response header. A caller may supply its own

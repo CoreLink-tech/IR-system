@@ -3,7 +3,7 @@
 ## Running the tests
 
     cd backend
-    npm test            # 774 unit and HTTP-level tests (plus 7 real-database cleanup tests that run only against a scratch database)
+    npm test            # 837 unit and HTTP-level tests (plus 7 real-database cleanup tests that run only against a scratch database)
     npm run test:cov    # same, plus coverage; fails if coverage drops below the floors
     npm run test:php    # the PHP library tests, three files (needs php with the curl extension)
     npm run test:all    # both
@@ -23,6 +23,7 @@
 | Configuration | Startup refusal of placeholder and weak secrets |
 | PHP library | Visitor address and trusted proxies, blocklist cache, circuit breaker, event queue and replay, redaction, guard modes, configuration, PHP 7.4 syntax check, end-to-end through a fake API (211 checks) |
 | Sessions and token revocation | `test/sessions-http.spec.ts`: the real JWT strategy, guards, auth and sessions services over HTTP: list, end one, sign out everywhere, password change and administrator reset end access tokens at once, tokens from before the feature keep working, other accounts' sessions are out of reach. See docs/SECURITY.md |
+| Password policy | `test/password-policy.spec.ts` (accepted and refused examples, look-alikes, patterns, the person's own details, the optional blocklist file) and the HTTP checks in `test/sessions-http.spec.ts` (create, change and administrator reset all enforce it, a refused change signs nobody out and leaks nothing). See docs/SECURITY.md |
 | Retention | `test/retention.spec.ts` (settings and floors, lock, batching, evidence rules, retries, time limit, dry run) and `test/retention-db.spec.ts` against a real MySQL or MariaDB, including cleanup during live inserts. See `docs/DATABASE.md` |
 | Build layout | `test/build-layout.spec.ts` (build must put main.js at dist/main.js) |
 | Migrations | `test/migrations-static.spec.ts` (every schema table, column and index is in a migration; nothing destructive) and, against a real MySQL or MariaDB, `npm run verify:migrations` (migrations equal the schema, a Stage 1 database upgrades with data intact, stage detection). See `docs/DATABASE.md` |

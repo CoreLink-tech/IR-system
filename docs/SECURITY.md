@@ -89,6 +89,28 @@ in the database, and an event sent twice with the same `event_id` is stored once
 - The cookie must be same-site with the API (for example `dashboard.example.com` and
   `api.example.com`), because `SameSite=Strict` cookies are not sent for a different site.
 
+## Password policy
+
+Applies when an account is created, when an administrator sets a temporary password, and when someone
+changes their own (which still needs the current password). The server checks, and tells the person in plain
+sentences, every problem it finds at once (`400`, `code: weak_password`, `message` is a list):
+
+- 12 to 128 characters.
+- Not only numbers.
+- Not a very common password, and not a common password with a few characters added (`Password123456!`,
+  `Qwerty123456`). Look-alike characters count as the same (`P@ssw0rd` is `password`). A long passphrase that
+  merely contains a common word is fine.
+- Not the same character or short pattern repeated, not a run in order (`abcdefghijkl`, `123456789012`),
+  not a keyboard walk (`asdfghjklzxc`).
+- Not containing the person's email name or their own name (for an administrator's temporary password, checked
+  against the person it is for).
+
+Limits you should know: the built-in list is about 400 entries, the passwords and words attackers try first. It is
+not a breached-password database. To block more, set `PASSWORD_BLOCKLIST_FILE` to a text file with one password
+or word per line (`#` comments allowed, up to 50 MB). It is read again when the file changes, no restart
+needed, and the API refuses to start if the file is set but missing. Checking passwords against an online
+breach service was left out on purpose (it would make sign-up depend on another company's server).
+
 ## Sessions and ending them
 
 A sign-in is a session. The refresh token is replaced on every use, so each token row carries a

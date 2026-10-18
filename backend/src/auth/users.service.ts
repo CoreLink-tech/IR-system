@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ActorContext } from '../common/decorators/current-actor.decorator';
 import { AUDIT_ACTIONS, ROLES } from '../common/constants';
+import { assertStrongPassword } from './password-policy';
 
 const USER_FIELDS = {
   id: true, email: true, name: true, role: true, isActive: true,
@@ -106,6 +107,7 @@ export class UsersService {
     }
     const target = await this.prisma.securityUser.findUnique({ where: { id } });
     if (!target) throw new NotFoundException('User not found');
+    assertStrongPassword(newPassword, { email: target.email, name: target.name });
     await this.prisma.securityUser.update({
       where: { id },
       data: { passwordHash: await bcrypt.hash(newPassword, 12), mustChangePassword: true, passwordChangedAt: new Date(), tokenVersion: { increment: 1 } },
