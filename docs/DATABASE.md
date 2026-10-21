@@ -13,7 +13,7 @@ created or changed.
     cd backend
     npx prisma migrate deploy
 
-This applies all seven migrations in order and records them in `_prisma_migrations`.
+This applies all eight migrations in order and records them in `_prisma_migrations`.
 
 ## Existing database (created earlier with `prisma db push`)
 
@@ -39,7 +39,7 @@ Take a backup first (see the backup runbook when it is added in a later Stage 10
         npx prisma migrate deploy
         npx prisma migrate status
 
-A database that has every migration is all `present = 1`: mark all seven as applied and there is nothing to deploy.
+A database that has every migration is all `present = 1`: mark all eight as applied and there is nothing to deploy.
 A Stage 9 database has the first five; deploy the rest (the index migration changes no data; the sessions migration adds columns and gives every existing sign-in its own session).
 
 ## Every schema change shipped so far
@@ -53,6 +53,7 @@ A Stage 9 database has the first five; deploy the rest (the index migration chan
 | `20260101000400_stage9_must_change_password` | Stage 9 | `security_users.mustChangePassword` (boolean, default false) | Everyone starts as false |
 | `20260101000500_stage10_indexes` | Stage 10 | Index review: five composite event indexes and one audit index added, seven single-column or duplicate indexes dropped | None. Indexes only, see "Index review" |
 | `20260101000600_stage10_sessions_and_token_version` | Stage 10 | `security_users.tokenVersion` (default 0) and `passwordChangedAt`; `security_refresh_tokens.sessionId`, `sessionStartedAt`, `lastUsedAt`, `deviceLabel`, `revokedReason` and an index on `sessionId` | Each existing sign-in becomes its own session (started when it was created). Existing accounts start at version 0, so nobody is signed out |
+| `20260101000700_stage10_login_throttle` | Stage 10 | New table `security_login_throttle` (failed sign-in counters per hashed email) | None. Starts empty. Old rows are removed by the cleanup job |
 
 ### How existing rows are backfilled (Stage 8)
 
@@ -221,6 +222,7 @@ too: every batch is committed on its own, and the next run carries on.
 | `incidents` | Resolved and false-positive incidents older than the limit, with their timeline | 730 days | `RETENTION_INCIDENT_DAYS` |
 | `audit_ingest` | The audit row written for each accepted event (`event.ingest`). The event is its own record | 30 days | `RETENTION_INGEST_AUDIT_DAYS` |
 | `audit_log` | All other audit entries (and any ingestion entries left) | 365 days | `RETENTION_AUDIT_DAYS` |
+| `login_throttle` | Failed sign-in counters whose last failure was more than two days ago (a lock lasts at most a day) | always | none |
 | `refresh_tokens` | Refresh tokens that expired more than the grace period ago. A revoked token that has not expired yet is kept, so a stolen token being replayed is still detected | 7 days after expiry | `RETENTION_TOKEN_GRACE_DAYS` |
 | `expire_blocks` | Not a deletion. Temporary blocks whose time has passed are switched off, which frees their address slot. The row stays as history. Permanent blocks are never touched | always | none |
 | `block_history` | Inactive blocks older than the limit | 365 days | `RETENTION_BLOCK_HISTORY_DAYS` |

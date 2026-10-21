@@ -17,6 +17,8 @@ interface Job {
   /** Rows older than this are affected. */
   cutoff: (c: RetentionConfig, now: Date) => Date;
   table: string;
+  /** Primary key column, "id" unless the table has another. */
+  pk?: string;
   from: string;      // static SQL, never user input
   idExpr: string;
   tsExpr: string;
@@ -66,6 +68,14 @@ export const JOBS: Job[] = [
     table: 'security_audit_logs',
     from: 'security_audit_logs a', idExpr: 'a.id', tsExpr: 'a.createdAt',
     where: 'a.createdAt < ?', action: 'delete', keyset: true,
+  },
+  {
+    name: 'login_throttle',
+    description: 'Failed sign-in counters whose last failure was more than two days ago. A lock lasts at most a day, so none of these is still locked.',
+    days: () => null, cutoff: (_c, now) => new Date(now.getTime() - 2 * DAY_MS),
+    table: 'security_login_throttle', pk: '`key`',
+    from: 'security_login_throttle l', idExpr: 'l.`key`', tsExpr: 'l.lastFailureAt',
+    where: 'l.lastFailureAt < ?', action: 'delete', keyset: true,
   },
   {
     name: 'refresh_tokens',
@@ -157,7 +167,7 @@ export class RetentionService {
     if (job.action === 'update') {
       return sql`UPDATE ${raw(job.table)} SET active = 0, activeKey = NULL, updatedAt = NOW(3) WHERE active = 1 AND id IN (${join(ids)})`;
     }
-    return sql`DELETE FROM ${raw(job.table)} WHERE id IN (${join(ids)})`;
+    return sql`DELETE FROM ${raw(job.table)} WHERE ${raw(job.pk ?? 'id')} IN (${join(ids)})`;
   }
 
   private async retry<T>(fn: () => Promise<T>, sleep: (ms: number) => Promise<void>): Promise<T> {

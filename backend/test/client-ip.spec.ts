@@ -1,3 +1,5 @@
+import { LoginThrottleService } from '../src/auth/login-throttle.service';
+import { InMemoryThrottle } from './helpers/in-memory-throttle';
 import 'reflect-metadata';
 import { readFileSync } from 'fs';
 import { join } from 'path';
@@ -238,7 +240,7 @@ describe('over HTTP: the login record uses the one address function', () => {
       imports: [JwtModule.register({})],
       controllers: [AuthController],
       providers: [
-        AuthService, { provide: UsersService, useValue: {} }, { provide: SessionsService, useValue: {} }, { provide: PrismaService, useValue: prisma },
+        AuthService, { provide: LoginThrottleService, useValue: new InMemoryThrottle() }, { provide: UsersService, useValue: {} }, { provide: SessionsService, useValue: {} }, { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: { log: async (e: any) => { audit.push(e); } } },
       ],
     }).compile();

@@ -1,3 +1,4 @@
+import { InMemoryThrottle } from './helpers/in-memory-throttle';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { UsersService } from '../src/auth/users.service';
@@ -23,7 +24,8 @@ function make(users: any[]) {
     $transaction: jest.fn(async (fn: any, opts: any) => fn(prisma)),
   };
   const audit = { log: jest.fn(async () => undefined) };
-  return { svc: new UsersService(prisma, audit as any), prisma, audit, tokens, users };
+  const throttle = new InMemoryThrottle();
+  return { svc: new UsersService(prisma, audit as any, throttle as any), prisma, audit, tokens, users, throttle };
 }
 const user = (id: string, role: string, over: any = {}) => ({ id, email: `${id}@example.com`, name: id, role, isActive: true, mustChangePassword: false, passwordHash: 'HASH', ...over });
 

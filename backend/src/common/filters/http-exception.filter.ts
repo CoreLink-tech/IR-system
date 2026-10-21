@@ -16,10 +16,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
     // A short machine-readable reason, only when the code that threw the error gave one.
     // The dashboard uses it to tell, for example, a stolen session from a plain expiry.
     let code: string | undefined;
+    let retryAfterSeconds: number | undefined;
     if (exception instanceof HttpException) {
       const r = exception.getResponse();
       message = typeof r === 'string' ? r : (r as any).message || r;
       if (typeof r === 'object' && typeof (r as any).code === 'string') code = (r as any).code;
+      if (typeof r === 'object' && Number.isInteger((r as any).retryAfterSeconds) && (r as any).retryAfterSeconds > 0) retryAfterSeconds = (r as any).retryAfterSeconds;
     }
 
     const body = {
@@ -30,7 +32,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
       requestId: req.requestId,
       timestamp: new Date().toISOString(),
       ...(code ? { code } : {}),
+      ...(retryAfterSeconds ? { retryAfterSeconds } : {}),
     };
+    if (retryAfterSeconds && typeof res.setHeader === 'function') res.setHeader('Retry-After', String(retryAfterSeconds));
 
     if (status >= 500) {
       this.logger.error(

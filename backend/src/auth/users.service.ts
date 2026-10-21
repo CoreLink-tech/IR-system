@@ -5,6 +5,8 @@ import { AuditService } from '../audit/audit.service';
 import { ActorContext } from '../common/decorators/current-actor.decorator';
 import { AUDIT_ACTIONS, ROLES } from '../common/constants';
 import { assertStrongPassword } from './password-policy';
+import { LoginThrottleService } from './login-throttle.service';
+import { loginKey } from './login-throttle';
 
 const USER_FIELDS = {
   id: true, email: true, name: true, role: true, isActive: true,
@@ -14,10 +16,29 @@ const USER_FIELDS = {
 /** Administration of dashboard accounts. Every route that reaches this is super admin only. */
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService) {}
+  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly throttle: LoginThrottleService) {}
 
-  list() {
-    return this.prisma.securityUser.findMany({ select: USER_FIELDS, orderBy: { createdAt: 'asc' } });
+  /** All accounts, each with lockedUntil (null unless sign-in is locked after too many wrong attempts). */
+  async list() {
+    const rows: any[] = await this.prisma.securityUser.findMany({ select: USER_FIELDS, orderBy: { createdAt: 'asc' } });
+    const locked = await this.throttle.lockedUntil(rows.map((r) => loginKey(r.email)));
+    return rows.map((r) => ({ ...r, lockedUntil: locked.get(loginKey(r.email)) ?? null }));
+  }
+
+  /**
+   * Lets an account sign in again right away after a lockout. The lock expires by itself anyway; this is for
+   * the person who is waiting. The wrong attempts are forgotten, so the next five are free again. Audited.
+   */
+  async unlock(id: string, actor: ActorContext) {
+    const target = await this.prisma.securityUser.findUnique({ where: { id }, select: { id: true, email: true } });
+    if (!target) throw new NotFoundException('User not found');
+    await this.throttle.reset(loginKey(target.email));
+    await this.audit.log({
+      requestId: actor.requestId, actorType: 'USER', actorId: actor.id, actorLabel: actor.label,
+      action: AUDIT_ACTIONS.UNLOCK, targetType: 'user', targetId: id, result: 'SUCCESS',
+      ipAddress: actor.ip, userAgent: actor.userAgent, metadata: { email: target.email },
+    });
+    return { ok: true };
   }
 
   /** The minimum needed to choose who an incident is assigned to. Active accounts only. */
@@ -108,6 +129,7 @@ export class UsersService {
     const target = await this.prisma.securityUser.findUnique({ where: { id } });
     if (!target) throw new NotFoundException('User not found');
     assertStrongPassword(newPassword, { email: target.email, name: target.name });
+    await this.throttle.reset(loginKey(target.email));   // so the person can sign in with the temporary password
     await this.prisma.securityUser.update({
       where: { id },
       data: { passwordHash: await bcrypt.hash(newPassword, 12), mustChangePassword: true, passwordChangedAt: new Date(), tokenVersion: { increment: 1 } },

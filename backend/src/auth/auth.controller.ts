@@ -113,6 +113,14 @@ export class AuthController {
     return this.users.list().then((data) => ({ data }));
   }
 
+  /** Lets an account that is locked after too many wrong attempts sign in again now. */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(ROLES.SUPER_ADMIN)
+  @Post('users/:id/unlock')
+  unlockUser(@Param('id') id: string, @CurrentActor() actor: ActorContext) {
+    return this.users.unlock(id, actor);
+  }
+
   /** Active accounts an incident can be assigned to. Names and roles only. */
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(ROLES.SUPER_ADMIN, ROLES.SECURITY_ADMIN)

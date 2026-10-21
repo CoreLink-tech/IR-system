@@ -89,6 +89,42 @@ in the database, and an event sent twice with the same `event_id` is stored once
 - The cookie must be same-site with the API (for example `dashboard.example.com` and
   `api.example.com`), because `SameSite=Strict` cookies are not sent for a different site.
 
+## Sign-in lockout
+
+In addition to the per-address limit (20 sign-ins a minute), each **email address** has its own counter, so
+an attacker spread over thousands of addresses still hits one wall per account.
+
+- The first 5 wrong attempts are free. The 5th (still checked) starts a 30 second lock. When it ends, one more
+  attempt is allowed; if that is wrong, the lock is twice as long (30, 60, 120, 240, 480, then 900 seconds, the
+  cap). A lock always ends by itself, and failures are forgotten after an hour without a new one.
+- Attempts are counted, and the lock set, **before** the password is checked. So even a burst of simultaneous
+  attempts gets no more than 5 password checks per lock window (tested with 60 requests at once, and with 40
+  over 10 real database connections). While locked the password is not checked at all, and attempts made during a
+  lock never make it longer.
+- Counted per email address whether or not an account exists, so a real and an invented address behave
+  identically (same statuses, messages and shape). The address is stored only as a SHA-256 hash.
+- The 5th wrong attempt answers 401 with `retryAfterSeconds`; further attempts answer 429 `account_locked` with
+  `retryAfterSeconds` and a `Retry-After` header.
+- Every lock is written to the audit log (`auth.lockout`: who, from where, failures, delay), never the password.
+- **Unlock.** A super admin can unlock an account at once (`POST /auth/users/:id/unlock`, audited), and the user
+  list shows who is locked. An administrator password reset also clears the lock.
+- **Trusted networks.** `LOCKOUT_EXEMPT_NETWORKS` (addresses, CIDR blocks, `private`) are never locked out, so
+  administrators on the office or VPN network cannot be held up. The address used is the one the server
+  determines (see "Client addresses"), never a header an outsider sets. List only networks you trust: sign-ins
+  from them are limited only by the per-address limit.
+- Settings: `LOCKOUT_THRESHOLD` (5), `LOCKOUT_BASE_SECONDS` (30), `LOCKOUT_MAX_SECONDS` (900),
+  `LOCKOUT_RESET_MINUTES` (60). Invalid values stop the API from starting.
+- If the only super admin is locked and cannot wait: the lock ends by itself in at most 15 minutes, or on the
+  database server run `DELETE FROM security_login_throttle;` (this forgets every account's failures).
+
+**Residual risk, stated plainly.** Any lockout lets someone who knows an administrator's email address slow
+that administrator's sign-in. The delays are capped at 15 minutes and expire, attempts during a lock do not
+extend it, and the cheapest attacker move (one attempt just as each lock ends) costs them a request every few
+minutes. They cannot get in, and they cannot lock the account permanently, but they can make signing in
+slower for as long as they keep at it. Mitigations in place: the exempt networks above, super admin unlock,
+audit of every lock, the per-address limit (which stops one address from locking many accounts). Not
+done: a "known device" exemption. Owner: whoever runs the deployment, to set `LOCKOUT_EXEMPT_NETWORKS`.
+
 ## Password policy
 
 Applies when an account is created, when an administrator sets a temporary password, and when someone

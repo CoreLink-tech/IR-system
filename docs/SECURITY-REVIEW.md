@@ -106,6 +106,29 @@ that fails without it. Items marked "not verified" say how the owner can check t
   and is presented again still ends every session (theft response kept)". Older rows with no recorded reason are
   treated as replaced, as before.
 
+### F-13 No per-account protection against credential stuffing (open item 7, first part)
+- Where: sign-in was limited per client address only (20 a minute). An attacker using many addresses (a botnet
+  or rotating proxies) could guess at one administrator's password without any per-account limit.
+- Fix: per-email lockout with growing, capped, self-expiring delays, counted before the password is checked
+  (so simultaneous attempts cannot get around it), identical for real and invented addresses, audited, with
+  super admin unlock and optional trusted networks. Details in docs/SECURITY.md.
+- Tests that show it: 60 addresses guessing at one admin: exactly 5 password checks and 55 refusals, and the
+  real admin signs in right after the delay; a 60-request simultaneous burst: still exactly 5 checks; one
+  address against 40 accounts: no account locked, the address is stopped by the per-address limit, and the real
+  admin signs in; real and invented addresses return identical responses. Breaking the lock check, or letting
+  refused attempts extend the lock, makes them fail.
+- Residual risk: an attacker who knows an administrator's email can slow that administrator's sign-in (see
+  docs/SECURITY.md). Owner: the deployment owner, via `LOCKOUT_EXEMPT_NETWORKS`.
+
+### F-14 Simultaneous sign-in attempts for one account deadlocked the counter (found while building F-13)
+- Found only on a real database: with 40 simultaneous attempts for one account, InnoDB reported deadlocks
+  (error 1213) and the first version of the counter, using INSERT IGNORE followed by SELECT ... FOR UPDATE,
+  gave up. The cause is a lock upgrade (shared then exclusive) in that pattern. It would have turned a burst of
+  attempts into server errors.
+- Fix: take the exclusive lock directly (INSERT ... ON DUPLICATE KEY UPDATE), and retry deadlocks up to 6 times
+  with jitter as a backstop. Verified: 40 simultaneous attempts on one account and 300 across five, three runs in a
+  row, no errors (`test/login-throttle-db.spec.ts`). The in-memory tests could not have found it.
+
 ## Verification notes for workstream 1
 - Backend: 715 tests passing, run against the repository's Prisma 5 package set (the Prisma engine is
   not needed by these tests, which use in-memory stand-ins).

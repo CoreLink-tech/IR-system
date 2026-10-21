@@ -1,3 +1,4 @@
+import { InMemoryThrottle } from './helpers/in-memory-throttle';
 import { JwtService } from '@nestjs/jwt';
 import { BadRequestException, ConflictException, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
@@ -31,7 +32,8 @@ function store() {
     },
   };
   const audit = { log: jest.fn(async () => undefined) };
-  return { users, tokens, prisma, audit, svc: new AuthService(prisma, new JwtService(), audit as any) };
+  const throttle = new InMemoryThrottle();
+  return { users, tokens, prisma, audit, throttle, svc: new AuthService(prisma, new JwtService(), audit as any, throttle as any) };
 }
 
 async function withUser(s: ReturnType<typeof store>, over: any = {}) {

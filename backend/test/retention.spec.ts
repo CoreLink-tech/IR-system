@@ -149,6 +149,7 @@ describe('cleanup run', () => {
     expect(cut('block_history')).toBe(NOW.getTime() - 365 * DAY);
     expect(cut('expired_allowlist')).toBe(NOW.getTime() - 7 * DAY);
     expect(cut('expire_blocks')).toBe(NOW.getTime());
+    expect(cut('login_throttle')).toBe(NOW.getTime() - 2 * DAY);
   });
 
   it('switches expired temporary blocks off instead of deleting them', async () => {
@@ -266,7 +267,7 @@ describe('cleanup run', () => {
 
   it('every job selects and changes rows by primary key, never by a bare time condition', () => {
     for (const j of JOBS) {
-      expect(j.idExpr).toMatch(/\.id$/);
+      expect(j.idExpr).toMatch(/\.(id|`key`)$/);
       expect(j.where).toContain('?');
       expect(j.where.split('?')).toHaveLength(2);
     }

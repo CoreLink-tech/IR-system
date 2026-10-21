@@ -15,7 +15,7 @@ const ADMIN = ['SUPER_ADMIN', 'SECURITY_ADMIN'];
 
 describe('route inventory', () => {
   it('finds every route (guards against the inventory silently shrinking)', () => {
-    expect(routes.length).toBe(50);
+    expect(routes.length).toBe(51);
   });
 
   it('has no duplicated method and path, because the first registration would shadow the second', () => {

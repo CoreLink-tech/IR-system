@@ -1,3 +1,5 @@
+import { LoginThrottleService } from '../src/auth/login-throttle.service';
+import { InMemoryThrottle } from './helpers/in-memory-throttle';
 import 'reflect-metadata';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { JwtModule, JwtService } from '@nestjs/jwt';
@@ -26,7 +28,7 @@ const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebK
 /** Real AuthService, SessionsService, JwtStrategy, guards and controller over HTTP, with an in-memory database. */
 describe('sessions and access-token revocation (real guards over HTTP)', () => {
   let app: INestApplication; let jwt: JwtService;
-  let users: any[]; let tokens: any[]; let audit: any[]; let seq: number;
+  let users: any[]; let tokens: any[]; let audit: any[]; let seq: number; let throttle: InMemoryThrottle;
 
   const matches = (row: any, where: any): boolean => Object.entries(where ?? {}).every(([k, v]: [string, any]) => {
     if (v && typeof v === 'object' && 'gt' in v) return row[k] > v.gt;
@@ -38,7 +40,7 @@ describe('sessions and access-token revocation (real guards over HTTP)', () => {
   };
 
   beforeEach(async () => {
-    tokens = []; audit = []; seq = 0;
+    tokens = []; audit = []; seq = 0; throttle = new InMemoryThrottle();
     const hash = await bcrypt.hash(PW, 4);
     users = [
       { id: 'admin', email: 'admin@example.com', passwordHash: hash, role: 'SUPER_ADMIN', isActive: true, name: 'Admin', mustChangePassword: false, tokenVersion: 0 },
@@ -71,7 +73,7 @@ describe('sessions and access-token revocation (real guards over HTTP)', () => {
       imports: [PassportModule, JwtModule.register({})],
       controllers: [AuthController],
       providers: [
-        AuthService, UsersService, SessionsService, JwtStrategy,
+        AuthService, UsersService, SessionsService, JwtStrategy, { provide: LoginThrottleService, useValue: throttle },
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: { log: async (e: any) => { audit.push(e); } } },
       ],

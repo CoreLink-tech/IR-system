@@ -1,10 +1,12 @@
-import { BadRequestException, ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, HttpException, HttpStatus, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ActorContext } from '../common/decorators/current-actor.decorator';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { createHash, randomBytes, randomUUID } from 'crypto';
 import { deviceLabel } from './device-label';
 import { assertStrongPassword, checkPassword } from './password-policy';
+import { LoginThrottleService } from './login-throttle.service';
+import { Decision, isExempt, loginKey } from './login-throttle';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AUDIT_ACTIONS, ROLES } from '../common/constants';
@@ -28,6 +30,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly audit: AuditService,
+    private readonly throttle: LoginThrottleService,
   ) {}
 
   private hashRefresh(token: string): string {
@@ -35,23 +38,41 @@ export class AuthService {
   }
 
   async login(email: string, password: string, ctx: { ip?: string; userAgent?: string; requestId?: string }) {
+    // Lockout. Counted per email address, whether or not an account exists, so a lock looks the same for real
+    // and invented addresses. The attempt is counted and any lock set BEFORE the password is checked, so
+    // simultaneous attempts cannot get around it. While locked the password is not checked at all.
+    const key = loginKey(email);
+    const exempt = isExempt(ctx.ip, this.throttle.config());
+    let lock: Decision | null = null;
+    if (!exempt) {
+      const d = await this.throttle.reserve(key);
+      if (!d.allowed) {
+        throw new HttpException({ message: `Too many sign-in attempts. Try again in ${waitText(d.retryAfterSeconds)}.`, code: 'account_locked', retryAfterSeconds: d.retryAfterSeconds }, HttpStatus.TOO_MANY_REQUESTS);
+      }
+      if (d.lockedNow) lock = d;
+    }
+    const refuse = async (actor: { actorType: 'ANONYMOUS' | 'USER'; actorId?: string; actorLabel: string }) => {
+      await this.audit.log({
+        requestId: ctx.requestId, ...actor, action: AUDIT_ACTIONS.LOGIN, result: 'FAILURE', ipAddress: ctx.ip, userAgent: ctx.userAgent,
+      });
+      if (lock) {
+        await this.audit.log({
+          requestId: ctx.requestId, ...actor, action: AUDIT_ACTIONS.LOCKOUT, result: 'FAILURE', ipAddress: ctx.ip, userAgent: ctx.userAgent,
+          metadata: { failures: lock.state?.failures, lockedForSeconds: lock.retryAfterSeconds },
+        });
+        throw new UnauthorizedException({ message: `Incorrect email or password. Too many attempts: try again in ${waitText(lock.retryAfterSeconds)}.`, code: 'invalid_credentials', retryAfterSeconds: lock.retryAfterSeconds });
+      }
+      throw new UnauthorizedException('Invalid credentials');
+    };
+
     const user = await this.prisma.securityUser.findUnique({ where: { email: email.toLowerCase() } });
     if (!user || !user.isActive) {
       await bcrypt.compare(password, DUMMY_HASH);
-      await this.audit.log({
-        requestId: ctx.requestId, actorType: 'ANONYMOUS', actorLabel: email,
-        action: AUDIT_ACTIONS.LOGIN, result: 'FAILURE', ipAddress: ctx.ip, userAgent: ctx.userAgent,
-      });
-      throw new UnauthorizedException('Invalid credentials');
+      return refuse({ actorType: 'ANONYMOUS', actorLabel: email });
     }
     const ok = await bcrypt.compare(password, user.passwordHash);
-    if (!ok) {
-      await this.audit.log({
-        requestId: ctx.requestId, actorType: 'USER', actorId: user.id, actorLabel: user.email,
-        action: AUDIT_ACTIONS.LOGIN, result: 'FAILURE', ipAddress: ctx.ip, userAgent: ctx.userAgent,
-      });
-      throw new UnauthorizedException('Invalid credentials');
-    }
+    if (!ok) return refuse({ actorType: 'USER', actorId: user.id, actorLabel: user.email });
+    if (!exempt) await this.throttle.reset(key);
 
     const tokens = await this.issueTokens(user, ctx);
     await this.prisma.securityUser.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
@@ -234,4 +255,11 @@ export class AuthService {
   private publicUser(user: any) {
     return { id: user.id, email: user.email, name: user.name, role: user.role, isActive: user.isActive, mustChangePassword: !!user.mustChangePassword };
   }
+}
+
+/** "30 seconds", "1 minute", "5 minutes": how long to wait, in words a person can use. */
+export function waitText(seconds: number): string {
+  if (seconds < 90) return `${seconds} second${seconds === 1 ? '' : 's'}`;
+  const m = Math.ceil(seconds / 60);
+  return `${m} minute${m === 1 ? '' : 's'}`;
 }

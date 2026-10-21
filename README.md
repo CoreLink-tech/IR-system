@@ -46,6 +46,7 @@ Copy backend/.env.example to backend/.env and fill in:
 - BOOTSTRAP_ADMIN_*     Used once by npm run seed
 - RETENTION_*          How long events, audit entries, incidents, blocks and tokens are kept, and how the cleanup command batches its work. Defaults are safe; see `docs/DATABASE.md`. Run `npm run cleanup` nightly
 - PASSWORD_BLOCKLIST_FILE  Optional text file of extra passwords or words to refuse (one per line). See `docs/SECURITY.md`
+- LOCKOUT_*           Sign-in lockout after repeated wrong passwords: threshold, delays, and networks that are never locked out. See `docs/SECURITY.md`
 - API_KEY_PREFIX        Prefix of generated API keys. Default `IRS_` (earlier builds used `PMS_`: set `API_KEY_PREFIX=PMS_` to keep keys issued by those builds working)
 - CORS_ORIGINS          The dashboard's exact origin(s), comma separated
 - TRUSTED_PROXIES       Reverse proxies whose X-Forwarded-For is believed: addresses, CIDR blocks, or `private`. Empty by default (headers ignored)

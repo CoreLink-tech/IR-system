@@ -263,3 +263,15 @@ model SecurityAuditLog {
   @@index([targetId, createdAt])
   @@map("security_audit_logs")
 }
+
+/// Failed sign-in attempts per hashed email, for lockout with growing delays. See docs/SECURITY.md.
+model SecurityLoginThrottle {
+  key           String    @id
+  failures      Int       @default(0)
+  lockedUntil   DateTime?
+  lastFailureAt DateTime
+  updatedAt     DateTime  @updatedAt
+
+  @@index([lastFailureAt])
+  @@map("security_login_throttle")
+}

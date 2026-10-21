@@ -123,6 +123,7 @@ check('the later expiry wins between two temporary blocks', keys.b5 === '198.51.
 check('an inactive block holds no slot; a single active block holds its address', keys.b6 === '<null>' && keys.b7 === '198.51.100.4');
 check('existing events: matchedRules and externalId are NULL, repeats with no externalId are allowed', rows('SELECT COUNT(*) FROM security_events WHERE matchedRules IS NULL AND externalId IS NULL', DBS.upgrade)[0][0] === '2');
 check('existing sign-ins become one session each, keeping their start time', rows("SELECT COUNT(*) FROM security_refresh_tokens WHERE sessionId = id AND sessionStartedAt = createdAt AND lastUsedAt = createdAt AND revokedReason IS NULL", DBS.upgrade)[0][0] === '2');
+check('the lockout table starts empty', rows('SELECT COUNT(*) FROM security_login_throttle', DBS.upgrade)[0][0] === '0');
 check('existing accounts start at token version 0 with no password change date', rows("SELECT tokenVersion, passwordChangedAt IS NULL FROM security_users WHERE id='u1'", DBS.upgrade)[0].join() === '0,1');
 check('existing users do not have to change their password', rows("SELECT mustChangePassword FROM security_users WHERE id='u1'", DBS.upgrade)[0][0] === '0');
 

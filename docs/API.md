@@ -33,6 +33,14 @@ all of that user's sessions and answers 401 with `code: "refresh_token_reuse"`. 
 on purpose (signed out, ended from the sessions page, password changed) answers 401 with
 `code: "session_ended"` and does not affect the account's other sessions.
 
+### Sign-in lockout
+After repeated wrong passwords for one email address (5 by default), `POST /auth/login` answers
+`429` with `code: "account_locked"`, `retryAfterSeconds` and a `Retry-After` header, without checking the
+password. The attempt that triggers the lock answers `401` with `code: "invalid_credentials"` and
+`retryAfterSeconds`. A real and an invented address behave identically. `POST /auth/users/:id/unlock`
+(super admin) lets the account sign in at once. `GET /auth/users` includes `lockedUntil` (null when not
+locked). See docs/SECURITY.md.
+
 ### Sessions
     GET    /api/v1/auth/sessions                          any role: my active sessions, newest use first
     DELETE /api/v1/auth/sessions/:id                      any role: end one of MY sessions

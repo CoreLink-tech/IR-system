@@ -56,5 +56,9 @@ FROM (
         (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'security_users' AND column_name IN ('tokenVersion', 'passwordChangedAt'))
       + (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'security_refresh_tokens' AND column_name IN ('sessionId', 'sessionStartedAt', 'lastUsedAt', 'deviceLabel', 'revokedReason'))
       + (SELECT COUNT(DISTINCT index_name) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'security_refresh_tokens' AND index_name = 'security_refresh_tokens_sessionId_idx')
+    UNION ALL
+    SELECT '20260101000700_stage10_login_throttle', 8, 6,
+        (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'security_login_throttle' AND column_name IN ('key', 'failures', 'lockedUntil', 'lastFailureAt', 'updatedAt'))
+      + (SELECT COUNT(DISTINCT index_name) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'security_login_throttle' AND index_name = 'security_login_throttle_lastFailureAt_idx')
 ) t
 ORDER BY ord;
