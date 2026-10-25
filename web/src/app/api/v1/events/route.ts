@@ -1,13 +1,43 @@
+import { desc, eq } from 'drizzle-orm';
 import { err, json, requestId } from '@/server/api';
+import { requireUser } from '@/server/auth/require-user';
 import { ingestEvent, verifyApiKey, type IngestBody } from '@/server/services/events';
+import { db } from '@/server/db/client';
+import { events } from '@/server/db/schema';
 
 export const runtime = 'nodejs';
 
-/**
- * POST /api/v1/events
- * Client website (PHP or other) sends security events with API key.
- * Authorization: Bearer IRS_...
- */
+export async function GET(req: Request) {
+  const rid = requestId(req);
+  const user = await requireUser(req);
+  if (!user) return err(401, 'Unauthorized', { code: 'unauthorized', requestId: rid });
+  const url = new URL(req.url);
+  const pageSize = Math.min(100, Math.max(1, Number(url.searchParams.get('pageSize') || 50)));
+  const ip = url.searchParams.get('ip');
+  let rows;
+  if (ip) {
+    rows = await db.select().from(events).where(eq(events.ipAddress, ip)).orderBy(desc(events.createdAt)).limit(pageSize);
+  } else {
+    rows = await db.select().from(events).orderBy(desc(events.createdAt)).limit(pageSize);
+  }
+  return json(
+    {
+      data: rows.map((e) => ({
+        id: e.id,
+        eventType: e.eventType,
+        severity: e.severity,
+        ipAddress: e.ipAddress,
+        riskScore: e.riskScore,
+        riskLevel: e.riskLevel,
+        incidentId: e.incidentId,
+        occurredAt: e.occurredAt?.toISOString() ?? null,
+        createdAt: e.createdAt.toISOString(),
+      })),
+    },
+    { requestId: rid },
+  );
+}
+
 export async function POST(req: Request) {
   const rid = requestId(req);
   const auth = req.headers.get('authorization') || '';

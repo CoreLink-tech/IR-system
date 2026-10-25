@@ -56,12 +56,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </Link>
             ))}
           </nav>
-          <div className="text-sm text-neutral-600">
-            {user.email}{' '}
+          <div className="flex flex-wrap items-center gap-3 text-sm text-neutral-600">
+            <span>{user.email}</span>
+            <Link href="/account/password" className="text-blue-700 underline">Password</Link>
+            <Link href="/account/sessions" className="text-blue-700 underline">Sessions</Link>
             <button
               type="button"
-              className="ml-2 text-blue-700 underline"
-              onClick={() => {
+              className="text-blue-700 underline"
+              onClick={async () => {
+                try { await fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }); } catch { /* */ }
                 setAccessToken(null);
                 sessionStorage.removeItem('ir_at');
                 router.replace('/sign-in');

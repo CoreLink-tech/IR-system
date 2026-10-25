@@ -160,3 +160,91 @@ export async function getUserById(id: string) {
   const rows = await db.select().from(users).where(eq(users.id, id)).limit(1);
   return rows[0] || null;
 }
+
+/** Rotate refresh token. Reuse of a revoked token ends all sessions for that user. */
+export async function refreshSession(
+  presented: string,
+  meta: { ip?: string; userAgent?: string },
+): Promise<{ accessToken: string; refreshToken: string; csrfToken: string; user: PublicUser }> {
+  const hash = hashRefreshToken(presented);
+  const rows = await db.select().from(refreshTokens).where(eq(refreshTokens.tokenHash, hash)).limit(1);
+  const row = rows[0];
+  if (!row) {
+    throw Object.assign(new Error('Invalid refresh token'), { status: 401, code: 'invalid_refresh' });
+  }
+  if (row.revokedAt) {
+    // Reuse of rotated token → compromise signal: revoke all for user
+    await db
+      .update(refreshTokens)
+      .set({ revokedAt: new Date(), revokedReason: 'reuse' })
+      .where(eq(refreshTokens.userId, row.userId));
+    throw Object.assign(new Error('Session compromised'), { status: 401, code: 'compromised' });
+  }
+  if (row.expiresAt.getTime() < Date.now()) {
+    throw Object.assign(new Error('Refresh expired'), { status: 401, code: 'expired' });
+  }
+  const user = await getUserById(row.userId);
+  if (!user || !user.isActive) {
+    throw Object.assign(new Error('User inactive'), { status: 401, code: 'unauthorized' });
+  }
+
+  // Revoke old, issue new (rotation)
+  await db
+    .update(refreshTokens)
+    .set({ revokedAt: new Date(), revokedReason: 'rotated' })
+    .where(eq(refreshTokens.id, row.id));
+
+  const session = await issueSession(user, meta);
+  return {
+    accessToken: session.accessToken,
+    refreshToken: session.refreshToken,
+    csrfToken: session.csrfToken,
+    user: session.user,
+  };
+}
+
+export async function logoutByRefresh(presented: string | undefined) {
+  if (!presented) return;
+  const hash = hashRefreshToken(presented);
+  await db
+    .update(refreshTokens)
+    .set({ revokedAt: new Date(), revokedReason: 'logout' })
+    .where(eq(refreshTokens.tokenHash, hash));
+}
+
+export async function listSessions(userId: string, currentHash?: string) {
+  const rows = await db
+    .select()
+    .from(refreshTokens)
+    .where(eq(refreshTokens.userId, userId));
+  const now = Date.now();
+  return rows
+    .filter((r) => !r.revokedAt && r.expiresAt.getTime() > now)
+    .map((r) => ({
+      id: r.id,
+      device: r.deviceLabel,
+      ipAddress: r.ipAddress,
+      createdAt: r.sessionStartedAt.toISOString(),
+      lastUsedAt: r.lastUsedAt?.toISOString() ?? null,
+      expiresAt: r.expiresAt.toISOString(),
+      current: currentHash ? r.tokenHash === currentHash : false,
+    }));
+}
+
+export async function revokeSession(userId: string, sessionRowId: string) {
+  const rows = await db.select().from(refreshTokens).where(eq(refreshTokens.id, sessionRowId)).limit(1);
+  if (!rows[0] || rows[0].userId !== userId) {
+    throw Object.assign(new Error('Not found'), { status: 404, code: 'not_found' });
+  }
+  await db
+    .update(refreshTokens)
+    .set({ revokedAt: new Date(), revokedReason: 'user_revoke' })
+    .where(eq(refreshTokens.id, sessionRowId));
+}
+
+export async function revokeAllSessions(userId: string) {
+  await db
+    .update(refreshTokens)
+    .set({ revokedAt: new Date(), revokedReason: 'revoke_all' })
+    .where(eq(refreshTokens.userId, userId));
+}
