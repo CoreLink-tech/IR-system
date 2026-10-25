@@ -1,38 +1,57 @@
-# Incident Response & Security Monitoring Platform
+# IR-System — Next.js + Turso
 
-**Current target:** Next.js 15 + SQLite/Turso, deployable on **Vercel**.  
-Client websites send security events via API key; this system uses **its own database** (not the shop DB).
+Incident response and security monitoring for e-commerce sites.
 
-## Active app: `web/`
+- **App:** `web/` — Next.js 15 (API + dashboard)
+- **Database:** SQLite (local) or **Turso** (production) — **your** DB, not the client shop
+- **Clients:** send events with API key; poll blocklist and enforce locally
+- **Host:** Vercel (or any Node host)
+
+## Quick start
 
 ```bash
 cd web
-cp .env.example .env   # set secrets + DATABASE_URL
+cp .env.example .env
+# Set JWT_SECRET, JWT_REFRESH_SECRET, API_KEY_HASH_PEPPER (long random strings)
+mkdir -p data
 npm install
 npx drizzle-kit push
-npm run seed
+npm run seed          # prints admin password + API key once
 npm run dev
 ```
 
-See [web/README.md](./web/README.md) for Turso, Vercel, and API examples.
+Open http://localhost:3000 → sign in → Overview, Incidents, Blocking, Users.
 
-### API (client → IR-System)
+## Client API
 
-| Method | Path | Auth | Purpose |
-|--------|------|------|---------|
-| POST | `/api/v1/events` | API key `IRS_…` | Ingest security event |
-| GET | `/api/v1/security/blocked-ips` | API key | Blocklist for the website to enforce |
-| GET | `/api/v1/health` | public | Liveness |
-| GET | `/api/v1/health/ready` | public | Database readiness |
+```http
+POST /api/v1/events
+Authorization: Bearer IRS_...
+Content-Type: application/json
 
-## Legacy reference (Nest + Vite)
+{ "event_type": "login_failed", "ip_address": "203.0.113.10", "event_id": "optional-id" }
+```
 
-- `backend/` — NestJS + Prisma + MySQL (Stage 1–10 hardening reference)
-- `frontend/` — React + Vite dashboard (UI reference for the Next port)
-- `integration/php/` — PHP client library (point `baseUrl` at the Next deployment)
+```http
+GET /api/v1/security/blocked-ips
+Authorization: Bearer IRS_...
+```
 
-These remain in the repo while the Next.js port is completed. New work happens under `web/`.
+```http
+POST /api/v1/auth/login
+{ "email": "...", "password": "...", "useCookie": true }
+```
 
-## License
+## Vercel
 
-See [LICENSE](./LICENSE). Proprietary terms apply.
+1. Project root directory: **`web`**
+2. Env: `DATABASE_URL`, `DATABASE_AUTH_TOKEN` (Turso), JWT secrets, `API_KEY_HASH_PEPPER`
+3. Deploy
+
+## PHP agent
+
+`integration/php/` — set base URL to your Vercel/Next origin.
+
+## Legacy Nest + Vite
+
+`backend/` and `frontend/` are the previous stack (reference only). All new work is in `web/`.
