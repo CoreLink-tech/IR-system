@@ -10,6 +10,7 @@ const NAV = [
   { href: '/incidents', label: 'Incidents' },
   { href: '/blocking', label: 'Blocking' },
   { href: '/admin/users', label: 'Users' },
+  { href: '/admin/api-keys', label: 'API keys' },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
