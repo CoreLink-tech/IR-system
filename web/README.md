@@ -79,3 +79,12 @@ PHP library under `integration/php/` can be pointed at this base URL (update con
 | Admin JWT auth + 2FA UI | Next |
 | Full detection rule engine | Next (port from backend/) |
 | Dashboard pages | Next (port from frontend/) |
+
+## Tests
+
+```bash
+npm test                              # unit + SQLite integration
+node scripts/migration-files.test.mjs # static migration checks
+```
+
+Integration tests create a temporary SQLite file, apply `drizzle/0000_initial`, and exercise login, API keys, ingest, auto-block, and rules.
