@@ -13,7 +13,9 @@
     "db:studio": "drizzle-kit studio",
     "seed": "node --env-file=.env scripts/seed.mjs",
     "typecheck": "tsc --noEmit",
-    "db:migrate": "node --env-file=.env scripts/migrate.mjs"
+    "db:migrate": "node --env-file=.env scripts/migrate.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@libsql/client": "^0.14.0",
@@ -38,7 +40,8 @@
     "eslint": "^9",
     "eslint-config-next": "15.5.28",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^2.1.4"
   },
   "engines": {
     "node": ">=20"

@@ -22,6 +22,8 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm install
+      - run: npm test
+      - run: node scripts/migration-files.test.mjs
       - run: npx tsc --noEmit || true
       - run: npm run build
         env:
