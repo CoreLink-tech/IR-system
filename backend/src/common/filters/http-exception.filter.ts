@@ -1,5 +1,6 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { redact } from '../utils/redact';
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -39,7 +40,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     if (status >= 500) {
       this.logger.error(
         `${req.method} ${req.url} -> ${status} [${req.requestId}]`,
-        exception instanceof Error ? exception.stack : String(exception),
+        redact(exception instanceof Error ? exception.stack : String(exception)),
       );
     }
 

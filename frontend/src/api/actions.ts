@@ -25,6 +25,8 @@ export const revokeApiKey = (id: string) => api(`/api-keys/${encodeURIComponent(
 export const createUser = (b: { email: string; password: string; name?: string; role: string; requirePasswordChange?: boolean }) => post<UserRow>('/auth/users', b);
 export const updateUser = (id: string, b: { role?: string; isActive?: boolean }) => api<UserRow>(`/auth/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: b });
 export const resetUserPassword = (id: string, newPassword: string) => post<{ ok: boolean }>(`/auth/users/${encodeURIComponent(id)}/reset-password`, { newPassword });
+export const unlockUser = (id: string) => post<{ ok: boolean }>(`/auth/users/${encodeURIComponent(id)}/unlock`, {});
+export const resetUser2fa = (id: string) => post<{ ok: boolean; mustEnrolAtNextSignIn?: boolean }>(`/auth/users/${encodeURIComponent(id)}/2fa/reset`, {});
 
 export const updateRule = (code: string, b: { isEnabled?: boolean; config?: Record<string, number>; reason?: string }) => api<RuleRow>(`/rules/${encodeURIComponent(code)}`, { method: 'PATCH', body: b });
 export const resetRule = (code: string, reason?: string) => post<RuleRow>(`/rules/${encodeURIComponent(code)}/reset`, { reason });

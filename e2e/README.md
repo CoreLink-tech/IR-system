@@ -75,3 +75,18 @@ Running this suite found, and these were then fixed:
 - Events delayed by a slow API could be stored twice.
 - Queued events were only sent when something new happened to be reported.
 - Releasing an old incident's slot made it look freshly updated.
+
+## Stage 10 two-step verification
+
+Run the stack with `REQUIRE_2FA=false` for legacy scenarios. Add scenarios that:
+
+1. Sign in as an admin with 2FA off when REQUIRE_2FA is false (unchanged).
+2. With REQUIRE_2FA=true, seed an admin without 2FA and expect `twoFactorEnrollmentRequired`.
+3. Enrol, confirm with a TOTP code from `backend/src/auth/totp.ts`, store recovery codes.
+4. Sign in again and complete `POST /auth/2fa/verify`.
+5. Use a recovery code once; second use fails.
+6. Lockout: raise `LOCKOUT_THRESHOLD` only on the test server; confirm unlock.
+7. Sessions: list, end one, revoke-all.
+8. Admin reset 2FA and unlock via API (super admin).
+
+A TOTP helper for e2e can import the same algorithm as the backend (`totp` / `verifyTotp` in `backend/src/auth/totp.ts`).

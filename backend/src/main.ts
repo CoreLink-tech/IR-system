@@ -45,8 +45,22 @@ async function bootstrap() {
   );
 
   const port = Number(process.env.PORT || 4000);
+  app.enableShutdownHooks();
   await app.listen(port, '0.0.0.0');
   logger.log(`Security API listening on http://0.0.0.0:${port}`);
+
+  const shutdown = async (signal: string) => {
+    logger.log(`Received ${signal}; draining and closing`);
+    try {
+      await app.close(); // stops accepting, waits for in-flight requests Nest tracks
+      process.exit(0);
+    } catch (e) {
+      logger.error(`Shutdown error: ${e}`);
+      process.exit(1);
+    }
+  };
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  process.on('SIGINT', () => void shutdown('SIGINT'));
 }
 
 bootstrap().catch((err) => {
