@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { api, ApiError } from '@/lib/client-api';
 
 type Incident = {
@@ -47,7 +48,7 @@ export default function IncidentsPage() {
             {rows.map((r) => (
               <tr key={r.id} className="border-b last:border-0">
                 <td className="px-3 py-2 font-mono text-xs">{r.publicNumber}</td>
-                <td className="px-3 py-2">{r.title}</td>
+                <td className="px-3 py-2"><Link className="text-blue-700 underline" href={`/incidents/${r.id}`}>{r.title}</Link></td>
                 <td className="px-3 py-2">{r.status}</td>
                 <td className="px-3 py-2">{r.severity}</td>
                 <td className="px-3 py-2 font-mono text-xs">{r.sourceIp || '—'}</td>

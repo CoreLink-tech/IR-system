@@ -9,6 +9,7 @@ const NAV = [
   { href: '/overview', label: 'Overview' },
   { href: '/incidents', label: 'Incidents' },
   { href: '/blocking', label: 'Blocking' },
+  { href: '/allowlist', label: 'Allowlist' },
   { href: '/admin/users', label: 'Users' },
   { href: '/admin/api-keys', label: 'API keys' },
 ];
