@@ -1,123 +1,38 @@
 # Incident Response & Security Monitoring Platform
 
-Production-oriented incident response backend for e-commerce websites.
+**Current target:** Next.js 15 + SQLite/Turso, deployable on **Vercel**.  
+Client websites send security events via API key; this system uses **its own database** (not the shop DB).
 
-- Backend: Node.js + TypeScript + NestJS + Prisma
-- Database: Reuses the website's existing MySQL/MariaDB. Creates only security_* tables.
-- Auth: JWT for admins, hashed API keys for the website -> Security API.
-- Detection: Configurable rule engine with 0-100 risk scoring.
-- Blocking: State in DB, exposed via /api/v1/security/blocked-ips for the website to enforce.
+## Active app: `web/`
 
-## Quick Start (Termux)
+```bash
+cd web
+cp .env.example .env   # set secrets + DATABASE_URL
+npm install
+npx drizzle-kit push
+npm run seed
+npm run dev
+```
 
-    pkg update && pkg upgrade -y
-    pkg install -y git nodejs-lts python make clang openssl libffi
-    termux-setup-storage
-    cd backend
-    cp .env.example .env
-    npm run gen:secrets      # prints fresh secrets; paste them into .env
-                             # the server refuses to start with the sample placeholders
-    npm install
-    npx prisma generate
-    npx prisma migrate deploy
-    npm run seed
-    npm run start:dev
+See [web/README.md](./web/README.md) for Turso, Vercel, and API examples.
 
-## Dashboard
+### API (client → IR-System)
 
-A web dashboard lives in `frontend/` (React, built to static files). It shows the executive summary and
-plain-English incident reports first, and technical detail one click deeper, with the four roles seeing only
-what they may use. See `frontend/README.md` to run and deploy it and `docs/FRONTEND.md` for how it works.
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| POST | `/api/v1/events` | API key `IRS_…` | Ingest security event |
+| GET | `/api/v1/security/blocked-ips` | API key | Blocklist for the website to enforce |
+| GET | `/api/v1/health` | public | Liveness |
+| GET | `/api/v1/health/ready` | public | Database readiness |
 
-    cd frontend && npm ci && npm run dev       # http://localhost:5173
+## Legacy reference (Nest + Vite)
 
-The API's `CORS_ORIGINS` must list the dashboard's exact origin. After `git pull` on an existing install, run
-`npx prisma migrate deploy`. A database first created with `prisma db push` must be baselined once: see `docs/DATABASE.md`.
-The session cookie is now named `ir_rt` and the default API key prefix is `IRS_`, so everyone signs in once more after this update (see `API_KEY_PREFIX` below for keeping older keys).
+- `backend/` — NestJS + Prisma + MySQL (Stage 1–10 hardening reference)
+- `frontend/` — React + Vite dashboard (UI reference for the Next port)
+- `integration/php/` — PHP client library (point `baseUrl` at the Next deployment)
 
-## Environment Variables
-
-Copy backend/.env.example to backend/.env and fill in:
-
-- DATABASE_URL          MySQL/MariaDB connection string
-- JWT_SECRET            Long random string, 64+ chars
-- JWT_REFRESH_SECRET    Long random string, 64+ chars
-- API_KEY_HASH_PEPPER   Random pepper for API key hashing
-- BOOTSTRAP_ADMIN_*     Used once by npm run seed
-- RETENTION_*          How long events, audit entries, incidents, blocks and tokens are kept, and how the cleanup command batches its work. Defaults are safe; see `docs/DATABASE.md`. Run `npm run cleanup` nightly
-- PASSWORD_BLOCKLIST_FILE  Optional text file of extra passwords or words to refuse (one per line). See `docs/SECURITY.md`
-- LOCKOUT_*           Sign-in lockout after repeated wrong passwords: threshold, delays, and networks that are never locked out. See `docs/SECURITY.md`
-- REQUIRE_2FA         Force two-step verification for SUPER_ADMIN and SECURITY_ADMIN. Defaults to on in production. See `docs/SECURITY.md`
-- TOTP_ENCRYPTION_KEY Long random string (64 hex chars or base64) used to encrypt authenticator secrets at rest. Required when REQUIRE_2FA is on. Generate with `openssl rand -hex 32` or `npm run gen:secrets`
-- TOTP_ENCRYPTION_KEY_PREVIOUS Optional previous key during a key change so existing secrets still decrypt
-- TOTP_ISSUER         Name shown in authenticator apps (default "Security Dashboard")
-- TOTP_WINDOW         Clock skew tolerance in steps (0, 1 or 2; default 1)
-- API_KEY_PREFIX        Prefix of generated API keys. Default `IRS_` (earlier builds used `PMS_`: set `API_KEY_PREFIX=PMS_` to keep keys issued by those builds working)
-- CORS_ORIGINS          The dashboard's exact origin(s), comma separated
-- TRUSTED_PROXIES       Reverse proxies whose X-Forwarded-For is believed: addresses, CIDR blocks, or `private`. Empty by default (headers ignored)
-- CLIENT_IP_HEADER      Optional header the proxy sets to the client address, for example CF-Connecting-IP
-- COOKIE_SECURE         Optional. The browser refresh cookie is Secure in production by default
-
-Generate secrets:
-
-    node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
-    # or: npm run gen:secrets   (also prints a TOTP_ENCRYPTION_KEY)
-
-Upgrade note (Stage 10 two-step verification): in production every SUPER_ADMIN and SECURITY_ADMIN must enrol at next sign-in. The server will not start without TOTP_ENCRYPTION_KEY when REQUIRE_2FA is on (the production default).
-
-## API Overview
-
-    POST /api/v1/auth/login          Admin login (JWT)
-    POST /api/v1/events              Ingest event (API key)
-    GET  /api/v1/events              List events (JWT)
-    GET  /api/v1/incidents           List incidents (JWT)
-    GET  /api/v1/incidents/:id       Incident detail
-    POST /api/v1/incidents/:id/status
-    POST /api/v1/incidents/:id/assign
-    GET  /api/v1/ips/:ip             IP intelligence
-    GET  /api/v1/reports/incidents/:id        plain-English incident report
-    GET  /api/v1/reports/technical/:id        technical incident report
-    GET  /api/v1/reports/executive-summary    owner/CEO summary
-    GET  /api/v1/reports/security-summary     aggregate security summary
-    GET  /api/v1/security/blocked-ips
-    POST /api/v1/security/block
-    POST /api/v1/security/unblock
-    POST /api/v1/security/allow
-    DELETE /api/v1/security/allow/:ip
-    GET  /api/v1/statistics
-    GET  /api/v1/audit-logs
-
-## Testing
-
-    cd backend
-    npm test
-
-## Security
-
-- bcrypt cost 12 for passwords
-- API keys SHA-256 + pepper, raw returned once
-- JWT HS256 with rotating refresh tokens
-- Helmet, strict CORS, class-validator DTOs
-- Prisma parameterized queries only
-- Event metadata scrubbed of secrets before storage
-
-## IP Blocking
-
-This platform records block state. It does NOT enforce network blocks.
-The PHP library (`integration/php/`, see its README) is responsible for rejecting traffic based on
-GET /api/v1/security/blocked-ips. Automatic blocks are always temporary.
+These remain in the repo while the Next.js port is completed. New work happens under `web/`.
 
 ## License
 
-Copyright © 2026 CoreLink-tech. All rights reserved.
-
-This project is source-available, not open source. You may view and
-inspect it for private, non-commercial evaluation, research, education,
-and security review only.
-
-Copying, modification, redistribution, commercial use, hosted deployment,
-sublicensing, use in a competing product, and AI training or evaluation
-are prohibited unless CoreLink-tech gives prior written permission.
-
-See [`LICENSE`](./LICENSE) for the complete terms. For commercial
-licensing, contact: ashedavid2005@gmail.com 
+See [LICENSE](./LICENSE). Proprietary terms apply.
