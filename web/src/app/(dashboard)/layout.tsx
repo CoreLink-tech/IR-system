@@ -9,6 +9,7 @@ const NAV = [
   { href: '/overview', label: 'Overview' },
   { href: '/incidents', label: 'Incidents' },
   { href: '/ips', label: 'Addresses' },
+  { href: '/reports', label: 'Reports' },
   { href: '/blocking', label: 'Blocking' },
   { href: '/allowlist', label: 'Allowlist' },
   { href: '/admin/users', label: 'Users' },

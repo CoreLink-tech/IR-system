@@ -19,7 +19,7 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 
 mkdir -p data
 npm install
-npx drizzle-kit push
+npm run db:migrate   # or: npx drizzle-kit push
 npm run seed
 npm run dev
 ```
@@ -32,7 +32,7 @@ Open http://localhost:3000 — health at `/api/v1/health`.
 # Create DB on Turso, then:
 # DATABASE_URL=libsql://...
 # DATABASE_AUTH_TOKEN=...
-npx drizzle-kit push
+npm run db:migrate   # or: npx drizzle-kit push
 npm run seed
 ```
 
