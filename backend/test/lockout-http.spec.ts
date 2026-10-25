@@ -1,3 +1,4 @@
+import { TwoFactorService } from '../src/auth/two-factor.service';
 import 'reflect-metadata';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
@@ -52,7 +53,7 @@ describe('sign-in lockout (real login path over HTTP)', () => {
       controllers: [AuthController],
       providers: [
         { provide: APP_GUARD, useClass: AppThrottlerGuard },
-        AuthService, UsersService, SessionsService, JwtStrategy,
+        AuthService, TwoFactorService, UsersService, SessionsService, JwtStrategy,
         { provide: LoginThrottleService, useValue: throttle },
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: { log: async (e: any) => { audit.push(e); } } },

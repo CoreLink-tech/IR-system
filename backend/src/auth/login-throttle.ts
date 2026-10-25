@@ -88,3 +88,10 @@ export function decide(prev: ThrottleState | null, now: Date, cfg: LockoutConfig
   }
   return { allowed: true, state: { failures, lockedUntil, lastFailureAt: now }, retryAfterSeconds, lockedNow: lockedUntil !== null };
 }
+
+/** "30 seconds", "1 minute", "5 minutes": how long to wait, in words a person can use. */
+export function waitText(seconds: number): string {
+  if (seconds < 90) return `${seconds} second${seconds === 1 ? '' : 's'}`;
+  const m = Math.ceil(seconds / 60);
+  return `${m} minute${m === 1 ? '' : 's'}`;
+}

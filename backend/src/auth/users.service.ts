@@ -11,6 +11,8 @@ import { loginKey } from './login-throttle';
 const USER_FIELDS = {
   id: true, email: true, name: true, role: true, isActive: true,
   mustChangePassword: true, lastLoginAt: true, createdAt: true,
+  // Only whether two-step verification is on is read; the secret itself is never selected.
+  totpEnabledAt: true,
 } as const;
 
 /** Administration of dashboard accounts. Every route that reaches this is super admin only. */
@@ -22,7 +24,7 @@ export class UsersService {
   async list() {
     const rows: any[] = await this.prisma.securityUser.findMany({ select: USER_FIELDS, orderBy: { createdAt: 'asc' } });
     const locked = await this.throttle.lockedUntil(rows.map((r) => loginKey(r.email)));
-    return rows.map((r) => ({ ...r, lockedUntil: locked.get(loginKey(r.email)) ?? null }));
+    return rows.map(({ totpEnabledAt, ...r }) => ({ ...r, twoFactorEnabled: !!totpEnabledAt, lockedUntil: locked.get(loginKey(r.email)) ?? null }));
   }
 
   /**

@@ -15,7 +15,7 @@ const ADMIN = ['SUPER_ADMIN', 'SECURITY_ADMIN'];
 
 describe('route inventory', () => {
   it('finds every route (guards against the inventory silently shrinking)', () => {
-    expect(routes.length).toBe(51);
+    expect(routes.length).toBe(60);
   });
 
   it('has no duplicated method and path, because the first registration would shadow the second', () => {
@@ -25,8 +25,11 @@ describe('route inventory', () => {
 
   it('protects every route except the public sign-in, session and health routes', () => {
     const unprotected = routes.filter((r) => !r.guards.some((g) => AUDIT_GUARD_NAMES.includes(g)));
+    // The three 2fa routes are the steps between the password and the session. They need the short-lived
+    // step token from login, are rate limited like login, and give no session on their own.
     expect(unprotected.map((r) => r.key).sort()).toEqual([
       'GET /api/v1/auth/csrf', 'GET /api/v1/health',
+      'POST /api/v1/auth/2fa/enroll/confirm', 'POST /api/v1/auth/2fa/enroll/start', 'POST /api/v1/auth/2fa/verify',
       'POST /api/v1/auth/login', 'POST /api/v1/auth/logout', 'POST /api/v1/auth/refresh',
     ]);
     expect(routes.filter((r) => r.isPublic).map((r) => r.key).sort()).toEqual(
@@ -46,7 +49,11 @@ describe('role rules', () => {
 
   // The only changes a viewer may make are to their OWN sign-ins. These routes take the account from the
   // access token, never from the URL (test/sessions-http.spec.ts proves another account's session id is a 404).
-  const SELF_SERVICE = ['DELETE /api/v1/auth/sessions/:id', 'POST /api/v1/auth/sessions/revoke-all'];
+  const SELF_SERVICE = [
+    'DELETE /api/v1/auth/sessions/:id', 'POST /api/v1/auth/sessions/revoke-all',
+    // their own two-step verification: set up, new recovery codes, switch off (needs password and a code)
+    'POST /api/v1/auth/2fa/setup/start', 'POST /api/v1/auth/2fa/setup/confirm', 'POST /api/v1/auth/2fa/recovery-codes/regenerate', 'POST /api/v1/auth/2fa/disable',
+  ];
 
   it('viewers can never change anything, except ending their own sessions', () => {
     const bad = routes.filter((r) => MUTATING.has(r.method) && r.roles.includes('VIEWER') && !SELF_SERVICE.includes(r.key)).map((r) => r.key);
@@ -122,6 +129,7 @@ describe('dashboard routes added in Stage 9', () => {
   it('the only routes with no sign-in are the session routes and health', () => {
     expect(routes.filter((r) => r.isPublic).map((r) => r.key).sort()).toEqual([
       'GET /api/v1/auth/csrf', 'GET /api/v1/health',
+      'POST /api/v1/auth/2fa/enroll/confirm', 'POST /api/v1/auth/2fa/enroll/start', 'POST /api/v1/auth/2fa/verify',
       'POST /api/v1/auth/login', 'POST /api/v1/auth/logout', 'POST /api/v1/auth/refresh',
     ]);
   });

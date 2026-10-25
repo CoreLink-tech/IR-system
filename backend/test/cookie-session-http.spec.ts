@@ -1,3 +1,4 @@
+import { TwoFactorService } from '../src/auth/two-factor.service';
 import { LoginThrottleService } from '../src/auth/login-throttle.service';
 import { InMemoryThrottle } from './helpers/in-memory-throttle';
 import 'reflect-metadata';
@@ -18,6 +19,7 @@ process.env.JWT_SECRET = 'access-secret-for-tests-0123456789abcdef0123456789abcd
 process.env.JWT_REFRESH_SECRET = 'refresh-secret-for-tests-fedcba9876543210fedcba9876543210';
 process.env.CORS_ORIGINS = 'https://dash.example.com';
 process.env.NODE_ENV = 'production';
+process.env.REQUIRE_2FA = 'false';   // production requires two-step verification for administrators by default; this spec tests the cookie flow without it (test/two-factor-http.spec.ts covers the rest)
 
 const ORIGIN = 'https://dash.example.com';
 
@@ -49,7 +51,7 @@ describe('browser cookie session (real AuthService over HTTP)', () => {
       imports: [JwtModule.register({})],
       controllers: [AuthController],
       providers: [
-        AuthService, { provide: LoginThrottleService, useValue: new InMemoryThrottle() }, { provide: UsersService, useValue: {} }, { provide: SessionsService, useValue: {} }, { provide: PrismaService, useValue: prisma },
+        AuthService, TwoFactorService, { provide: LoginThrottleService, useValue: new InMemoryThrottle() }, { provide: UsersService, useValue: {} }, { provide: SessionsService, useValue: {} }, { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: { log: async (e: any) => { audit.push(e); } } },
       ],
     }).compile();

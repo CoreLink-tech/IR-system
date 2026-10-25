@@ -8,6 +8,7 @@ import { JwtStrategy } from '../src/auth/jwt.strategy';
 
 const good = {
   NODE_ENV: 'production',
+  TOTP_ENCRYPTION_KEY: 'ab'.repeat(32),
   DATABASE_URL: 'mysql://ir_user:x9f2kq81vb@db:3306/shop',
   JWT_SECRET: 'a'.repeat(20) + 'B'.repeat(20) + '1'.repeat(24),
   JWT_REFRESH_SECRET: 'z'.repeat(20) + 'Y'.repeat(20) + '9'.repeat(24),

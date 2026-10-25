@@ -58,7 +58,7 @@ describe('migrations', () => {
     expect(missing).toEqual([]);
   });
 
-  it('the guard itself reads the schema (12 tables)', () => { expect(models()).toHaveLength(12); });
+  it('the guard itself reads the schema (13 tables)', () => { expect(models()).toHaveLength(13); });
 
   it('the schema uses only comment styles Prisma accepts (// and ///), never /* */', () => {
     // A block comment is not valid Prisma syntax. It cost a failed schema parse once, and the Prisma

@@ -25,6 +25,12 @@
     "SECURITY_ADMIN",
     "ANALYST"
   ],
+  "GET /api/v1/auth/2fa": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN",
+    "ANALYST",
+    "VIEWER"
+  ],
   "GET /api/v1/auth/assignees": [
     "SUPER_ADMIN",
     "SECURITY_ADMIN"
@@ -148,6 +154,30 @@
     "SUPER_ADMIN",
     "SECURITY_ADMIN"
   ],
+  "POST /api/v1/auth/2fa/disable": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN",
+    "ANALYST",
+    "VIEWER"
+  ],
+  "POST /api/v1/auth/2fa/recovery-codes/regenerate": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN",
+    "ANALYST",
+    "VIEWER"
+  ],
+  "POST /api/v1/auth/2fa/setup/confirm": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN",
+    "ANALYST",
+    "VIEWER"
+  ],
+  "POST /api/v1/auth/2fa/setup/start": [
+    "SUPER_ADMIN",
+    "SECURITY_ADMIN",
+    "ANALYST",
+    "VIEWER"
+  ],
   "POST /api/v1/auth/change-password": [
     "SUPER_ADMIN",
     "SECURITY_ADMIN",
@@ -161,6 +191,9 @@
     "VIEWER"
   ],
   "POST /api/v1/auth/users": [
+    "SUPER_ADMIN"
+  ],
+  "POST /api/v1/auth/users/:id/2fa/reset": [
     "SUPER_ADMIN"
   ],
   "POST /api/v1/auth/users/:id/reset-password": [

@@ -6,6 +6,7 @@ import { AuthController } from '../src/auth/auth.controller';
 import { AuthService } from '../src/auth/auth.service';
 import { UsersService } from '../src/auth/users.service';
 import { SessionsService } from '../src/auth/sessions.service';
+import { TwoFactorService } from '../src/auth/two-factor.service';
 import { AuditController } from '../src/audit/audit.controller';
 import { BlockingController } from '../src/blocking/blocking.controller';
 import { BlockingService } from '../src/blocking/blocking.service';
@@ -61,7 +62,7 @@ describe('Controllers (real validation and role checks, services stubbed)', () =
     const mod = await Test.createTestingModule({
       controllers: [AuthController, AuditController, BlockingController, StatisticsController, IncidentsController, IpsController, ApiKeysController],
       providers: [
-        { provide: AuthService, useValue: auth }, { provide: UsersService, useValue: {} }, { provide: SessionsService, useValue: sessions }, { provide: BlockingService, useValue: blocking },
+        { provide: AuthService, useValue: auth }, { provide: UsersService, useValue: {} }, { provide: SessionsService, useValue: sessions }, { provide: TwoFactorService, useValue: {} }, { provide: BlockingService, useValue: blocking },
         { provide: StatisticsService, useValue: stats }, { provide: IncidentsService, useValue: incidents },
         { provide: IpsService, useValue: ips }, { provide: IpIntelligenceService, useValue: intel },
         { provide: ApiKeysService, useValue: keys }, { provide: PrismaService, useValue: prisma },

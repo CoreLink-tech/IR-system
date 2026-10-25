@@ -1,3 +1,4 @@
+import { TwoFactorService } from '../src/auth/two-factor.service';
 import { InMemoryThrottle } from './helpers/in-memory-throttle';
 import { JwtService } from '@nestjs/jwt';
 import { BadRequestException, ConflictException, UnauthorizedException } from '@nestjs/common';
@@ -33,7 +34,8 @@ function store() {
   };
   const audit = { log: jest.fn(async () => undefined) };
   const throttle = new InMemoryThrottle();
-  return { users, tokens, prisma, audit, throttle, svc: new AuthService(prisma, new JwtService(), audit as any, throttle as any) };
+  const jwtSvc = new JwtService();
+  return { users, tokens, prisma, audit, throttle, svc: new AuthService(prisma, jwtSvc, audit as any, throttle as any, new TwoFactorService(prisma, audit as any, throttle as any, jwtSvc)) };
 }
 
 async function withUser(s: ReturnType<typeof store>, over: any = {}) {
@@ -45,7 +47,7 @@ async function withUser(s: ReturnType<typeof store>, over: any = {}) {
 describe('AuthService.login', () => {
   it('returns tokens and a public user without the password hash', async () => {
     const s = await withUser(store());
-    const r = await s.svc.login('admin@example.com', 'CorrectHorse!1', ctx);
+    const r = await (s.svc as any).login('admin@example.com', 'CorrectHorse!1', ctx);
     expect(r.user).toEqual({ id: 'u0', email: 'admin@example.com', name: 'Admin', role: 'SECURITY_ADMIN', isActive: true, mustChangePassword: false });
     expect(JSON.stringify(r)).not.toContain('passwordHash');
     expect(r.accessToken).toBeTruthy();
@@ -56,12 +58,12 @@ describe('AuthService.login', () => {
 
   it('matches the email case-insensitively', async () => {
     const s = await withUser(store());
-    await expect(s.svc.login('ADMIN@Example.COM', 'CorrectHorse!1', ctx)).resolves.toBeDefined();
+    await expect((s.svc as any).login('ADMIN@Example.COM', 'CorrectHorse!1', ctx)).resolves.toBeDefined();
   });
 
   it('stores only a hash of the refresh token', async () => {
     const s = await withUser(store());
-    const r = await s.svc.login('admin@example.com', 'CorrectHorse!1', ctx);
+    const r = await (s.svc as any).login('admin@example.com', 'CorrectHorse!1', ctx);
     expect(s.tokens).toHaveLength(1);
     expect(s.tokens[0].tokenHash).toMatch(/^[0-9a-f]{64}$/);
     expect(JSON.stringify(s.tokens)).not.toContain(r.refreshToken);
@@ -69,14 +71,14 @@ describe('AuthService.login', () => {
 
   it('issues an access token that names the user, role and type', async () => {
     const s = await withUser(store());
-    const r = await s.svc.login('admin@example.com', 'CorrectHorse!1', ctx);
+    const r = await (s.svc as any).login('admin@example.com', 'CorrectHorse!1', ctx);
     const p: any = await new JwtService().verifyAsync(r.accessToken, { secret: process.env.JWT_SECRET });
     expect(p).toMatchObject({ sub: 'u0', email: 'admin@example.com', role: 'SECURITY_ADMIN', type: 'access' });
   });
 
   it('rejects a wrong password with a generic message and records the failure', async () => {
     const s = await withUser(store());
-    await expect(s.svc.login('admin@example.com', 'wrong-password', ctx)).rejects.toThrow(new UnauthorizedException('Invalid credentials'));
+    await expect((s.svc as any).login('admin@example.com', 'wrong-password', ctx)).rejects.toThrow(new UnauthorizedException('Invalid credentials'));
     expect(s.audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'auth.login', result: 'FAILURE', actorId: 'u0' }));
     expect(s.users[0].lastLoginAt).toBeUndefined();
     expect(s.tokens).toHaveLength(0);
@@ -84,8 +86,8 @@ describe('AuthService.login', () => {
 
   it('gives the same answer for an unknown email as for a wrong password', async () => {
     const s = await withUser(store());
-    const wrong = await s.svc.login('admin@example.com', 'nope-nope-nope', ctx).catch((e) => e);
-    const unknown = await s.svc.login('ghost@example.com', 'nope-nope-nope', ctx).catch((e) => e);
+    const wrong = await (s.svc as any).login('admin@example.com', 'nope-nope-nope', ctx).catch((e) => e);
+    const unknown = await (s.svc as any).login('ghost@example.com', 'nope-nope-nope', ctx).catch((e) => e);
     expect(unknown.message).toBe(wrong.message);
     expect(unknown.getStatus()).toBe(wrong.getStatus());
   });
@@ -93,10 +95,10 @@ describe('AuthService.login', () => {
   it('compares the password even when the email is unknown, so response time does not reveal which emails exist', async () => {
     const s = await withUser(store());
     const spy = jest.spyOn(require('bcryptjs'), 'compare');
-    await s.svc.login('ghost@example.com', 'whatever-password', ctx).catch(() => undefined);
+    await (s.svc as any).login('ghost@example.com', 'whatever-password', ctx).catch(() => undefined);
     expect(spy).toHaveBeenCalledTimes(1);
     spy.mockClear();
-    await s.svc.login('admin@example.com', 'whatever-password', ctx).catch(() => undefined);
+    await (s.svc as any).login('admin@example.com', 'whatever-password', ctx).catch(() => undefined);
     expect(spy).toHaveBeenCalledTimes(1);
     spy.mockRestore();
   });
@@ -104,7 +106,7 @@ describe('AuthService.login', () => {
   it('rejects a disabled account even with the right password, and still does a password comparison', async () => {
     const s = await withUser(store(), { isActive: false });
     const spy = jest.spyOn(require('bcryptjs'), 'compare');
-    await expect(s.svc.login('admin@example.com', 'CorrectHorse!1', ctx)).rejects.toThrow('Invalid credentials');
+    await expect((s.svc as any).login('admin@example.com', 'CorrectHorse!1', ctx)).rejects.toThrow('Invalid credentials');
     expect(spy).toHaveBeenCalledTimes(1);
     spy.mockRestore();
     expect(s.tokens).toHaveLength(0);
@@ -114,7 +116,7 @@ describe('AuthService.login', () => {
 describe('AuthService.refresh', () => {
   it('rotates: the old token stops working and a new pair is issued', async () => {
     const s = await withUser(store());
-    const first = await s.svc.login('admin@example.com', 'CorrectHorse!1', ctx);
+    const first = await (s.svc as any).login('admin@example.com', 'CorrectHorse!1', ctx);
     const second = await s.svc.refresh(first.refreshToken, ctx);
     expect(second.refreshToken).not.toBe(first.refreshToken);
     expect(s.tokens.filter((t) => t.revokedAt === null)).toHaveLength(1);
@@ -123,7 +125,7 @@ describe('AuthService.refresh', () => {
 
   it('treats reuse of an already-used token as theft and ends every session for that user', async () => {
     const s = await withUser(store());
-    const first = await s.svc.login('admin@example.com', 'CorrectHorse!1', ctx);
+    const first = await (s.svc as any).login('admin@example.com', 'CorrectHorse!1', ctx);
     const second = await s.svc.refresh(first.refreshToken, ctx);
     // An attacker (or the owner) replays the old token.
     await expect(s.svc.refresh(first.refreshToken, ctx)).rejects.toBeInstanceOf(UnauthorizedException);
@@ -138,8 +140,8 @@ describe('AuthService.refresh', () => {
   it('does not touch other users sessions when one user token is reused', async () => {
     const s = await withUser(store());
     s.users.push({ id: 'u9', email: 'other@example.com', passwordHash: await bcrypt.hash('OtherPass!123', 4), role: 'ANALYST', isActive: true });
-    const other = await s.svc.login('other@example.com', 'OtherPass!123', ctx);
-    const mine = await s.svc.login('admin@example.com', 'CorrectHorse!1', ctx);
+    const other = await (s.svc as any).login('other@example.com', 'OtherPass!123', ctx);
+    const mine = await (s.svc as any).login('admin@example.com', 'CorrectHorse!1', ctx);
     await s.svc.refresh(mine.refreshToken, ctx);
     await s.svc.refresh(mine.refreshToken, ctx).catch(() => undefined);
     await expect(s.svc.refresh(other.refreshToken, ctx)).resolves.toBeDefined();
@@ -154,7 +156,7 @@ describe('AuthService.refresh', () => {
 
   it('refuses an access token presented as a refresh token', async () => {
     const s = await withUser(store());
-    const login = await s.svc.login('admin@example.com', 'CorrectHorse!1', ctx);
+    const login = await (s.svc as any).login('admin@example.com', 'CorrectHorse!1', ctx);
     await expect(s.svc.refresh(login.accessToken, ctx)).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
@@ -166,14 +168,14 @@ describe('AuthService.refresh', () => {
 
   it('refuses an expired stored token', async () => {
     const s = await withUser(store());
-    const login = await s.svc.login('admin@example.com', 'CorrectHorse!1', ctx);
+    const login = await (s.svc as any).login('admin@example.com', 'CorrectHorse!1', ctx);
     s.tokens[0].expiresAt = new Date(Date.now() - 1000);
     await expect(s.svc.refresh(login.refreshToken, ctx)).rejects.toThrow('Refresh token expired or revoked');
   });
 
   it('refuses to refresh for a user who was disabled after login', async () => {
     const s = await withUser(store());
-    const login = await s.svc.login('admin@example.com', 'CorrectHorse!1', ctx);
+    const login = await (s.svc as any).login('admin@example.com', 'CorrectHorse!1', ctx);
     s.users[0].isActive = false;
     await expect(s.svc.refresh(login.refreshToken, ctx)).rejects.toThrow('User inactive');
   });
@@ -182,7 +184,7 @@ describe('AuthService.refresh', () => {
 describe('AuthService.logout', () => {
   it('revokes the presented token so it cannot be refreshed', async () => {
     const s = await withUser(store());
-    const login = await s.svc.login('admin@example.com', 'CorrectHorse!1', ctx);
+    const login = await (s.svc as any).login('admin@example.com', 'CorrectHorse!1', ctx);
     await s.svc.logout(login.refreshToken);
     await expect(s.svc.refresh(login.refreshToken, ctx)).rejects.toBeInstanceOf(UnauthorizedException);
   });
@@ -232,7 +234,7 @@ describe('AuthService.changePassword', () => {
 
   it('changes the password, revokes every refresh token, and audits it', async () => {
     const s = await withUser(store());
-    const login = await s.svc.login('admin@example.com', 'CorrectHorse!1', ctx);
+    const login = await (s.svc as any).login('admin@example.com', 'CorrectHorse!1', ctx);
     await expect(change(s, 'CorrectHorse!1', 'A-Brand-New-Passphrase-9')).resolves.toEqual({ ok: true });
     expect(await bcrypt.compare('A-Brand-New-Passphrase-9', s.users[0].passwordHash)).toBe(true);
     expect(s.tokens.every((t) => t.revokedAt !== null)).toBe(true);
@@ -243,8 +245,8 @@ describe('AuthService.changePassword', () => {
   it('the old password stops working and the new one works', async () => {
     const s = await withUser(store());
     await change(s, 'CorrectHorse!1', 'A-Brand-New-Passphrase-9');
-    await expect(s.svc.login('admin@example.com', 'CorrectHorse!1', ctx)).rejects.toThrow('Invalid credentials');
-    await expect(s.svc.login('admin@example.com', 'A-Brand-New-Passphrase-9', ctx)).resolves.toBeDefined();
+    await expect((s.svc as any).login('admin@example.com', 'CorrectHorse!1', ctx)).rejects.toThrow('Invalid credentials');
+    await expect((s.svc as any).login('admin@example.com', 'A-Brand-New-Passphrase-9', ctx)).resolves.toBeDefined();
   });
 
   it('refuses a wrong current password, changes nothing, and audits the failure', async () => {
@@ -286,12 +288,12 @@ describe('AuthService.me', () => {
 describe('AuthService.verifyRefreshJwt', () => {
   it('accepts a real refresh token', async () => {
     const s = await withUser(store());
-    const { refreshToken } = await s.svc.login('admin@example.com', 'CorrectHorse!1', ctx);
+    const { refreshToken } = await (s.svc as any).login('admin@example.com', 'CorrectHorse!1', ctx);
     await expect(s.svc.verifyRefreshJwt(refreshToken)).resolves.toBeUndefined();
   });
   it('rejects an access token, a tampered token and garbage, with the no_session code', async () => {
     const s = await withUser(store());
-    const { accessToken, refreshToken } = await s.svc.login('admin@example.com', 'CorrectHorse!1', ctx);
+    const { accessToken, refreshToken } = await (s.svc as any).login('admin@example.com', 'CorrectHorse!1', ctx);
     for (const bad of [accessToken, refreshToken.slice(0, -3) + 'abc', 'garbage', '']) {
       const err: any = await s.svc.verifyRefreshJwt(bad).catch((e) => e);
       expect(err).toBeInstanceOf(UnauthorizedException);

@@ -6,7 +6,11 @@ import type { Response } from 'express';
 import { AuthService, REFRESH_TTL_MS } from './auth.service';
 import { UsersService } from './users.service';
 import { SessionsService } from './sessions.service';
-import { ChangePasswordDto, CreateUserDto, LoginDto, RefreshDto, ResetUserPasswordDto, UpdateUserDto } from './dto';
+import { TwoFactorService } from './two-factor.service';
+import {
+  ChangePasswordDto, CodeDto, CreateUserDto, EnrolConfirmDto, EnrolStartDto, LoginDto, PasswordAndCodeDto, RefreshDto,
+  ResetUserPasswordDto, UpdateUserDto, VerifyTwoFactorDto,
+} from './dto';
 import { extractIp } from '../common/utils/ip.util';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -25,7 +29,7 @@ const LOGIN_THROTTLE = {
 
 @Controller('api/v1/auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService, private readonly users: UsersService, private readonly sessions: SessionsService) {}
+  constructor(private readonly auth: AuthService, private readonly users: UsersService, private readonly sessions: SessionsService, private readonly twoFactor: TwoFactorService) {}
 
   @Public()
   // Password guessing is the most attractive target on a security product, so signing in
@@ -36,13 +40,107 @@ export class AuthController {
   async login(@Body() dto: LoginDto, @Req() req: any, @Res({ passthrough: true }) res: Response) {
     res.setHeader('Cache-Control', 'no-store');
     const result = await this.auth.login(dto.email, dto.password, {
-      ip: extractIp(req), userAgent: req.headers['user-agent'], requestId: req.requestId,
+      ip: extractIp(req), userAgent: req.headers['user-agent'], requestId: req.requestId, useCookie: !!dto.useCookie,
     });
-    if (!dto.useCookie) return result;
-    // Browser sign-in: the refresh token goes into an httpOnly cookie and never into the body.
+    // Password right but a second step is needed: no session and no cookie yet, only the short-lived step token.
+    if (!('accessToken' in result)) return result;
+    return this.sessionResponse(result, !!dto.useCookie, res);
+  }
+
+  /** Browser sign-in: the refresh token goes into an httpOnly cookie and never into the body. */
+  private sessionResponse<T extends { refreshToken: string }>(result: T, useCookie: boolean, res: Response): Omit<T, 'refreshToken'> & { refreshToken?: string; csrfToken?: string } {
+    if (!useCookie) return result;
     const { refreshToken, ...rest } = result;
     res.append('Set-Cookie', buildRefreshCookie(refreshToken, REFRESH_TTL_MS));
     return { ...rest, csrfToken: csrfTokenFor(refreshToken) };
+  }
+
+  private ctxOf(req: any) { return { ip: extractIp(req), userAgent: req.headers['user-agent'], requestId: req.requestId }; }
+
+  // ---- Two-step verification ---------------------------------------------------------------------
+
+  /** Second step of signing in. Takes the step token from login and a code (or a recovery code). */
+  @Public()
+  @Throttle(LOGIN_THROTTLE)
+  @Post('2fa/verify')
+  async verifyTwoFactor(@Body() dto: VerifyTwoFactorDto, @Req() req: any, @Res({ passthrough: true }) res: Response) {
+    res.setHeader('Cache-Control', 'no-store');
+    const { user, useCookie } = await this.twoFactor.readChallenge(dto.challengeToken, 'mfa');
+    const ctx = this.ctxOf(req);
+    const out = await this.twoFactor.verifySignIn(user, dto, ctx);
+    const session = await this.auth.completeSignIn(user.id, ctx, out.method);
+    return this.sessionResponse({ ...session, recoveryCodesRemaining: out.recoveryCodesRemaining }, useCookie, res);
+  }
+
+  /** Where two-step verification is required but not set up: start setting it up (before there is a session). */
+  @Public()
+  @Throttle(LOGIN_THROTTLE)
+  @Post('2fa/enroll/start')
+  async enrolStart(@Body() dto: EnrolStartDto, @Res({ passthrough: true }) res: Response) {
+    res.setHeader('Cache-Control', 'no-store');
+    const { user } = await this.twoFactor.readChallenge(dto.challengeToken, 'enroll');
+    return this.twoFactor.startEnrolment(user.id);
+  }
+
+  /** Confirms with a first code. Returns the recovery codes (shown once) and starts the session. */
+  @Public()
+  @Throttle(LOGIN_THROTTLE)
+  @Post('2fa/enroll/confirm')
+  async enrolConfirm(@Body() dto: EnrolConfirmDto, @Req() req: any, @Res({ passthrough: true }) res: Response) {
+    res.setHeader('Cache-Control', 'no-store');
+    const { user, useCookie } = await this.twoFactor.readChallenge(dto.challengeToken, 'enroll');
+    const ctx = this.ctxOf(req);
+    const { recoveryCodes } = await this.twoFactor.confirmEnrolment(user.id, dto.code, ctx);
+    const session = await this.auth.completeSignIn(user.id, ctx, 'enrolment');
+    return this.sessionResponse({ ...session, recoveryCodes }, useCookie, res);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(...ALL_ROLES)
+  @Get('2fa')
+  twoFactorStatus(@CurrentActor() actor: ActorContext, @Res({ passthrough: true }) res: Response) {
+    res.setHeader('Cache-Control', 'no-store');
+    return this.twoFactor.status(actor.id!);
+  }
+
+  /** For accounts where it is optional: set it up while signed in. */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(...ALL_ROLES)
+  @Post('2fa/setup/start')
+  setupStart(@CurrentActor() actor: ActorContext, @Res({ passthrough: true }) res: Response) {
+    res.setHeader('Cache-Control', 'no-store');
+    return this.twoFactor.startEnrolment(actor.id!);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(...ALL_ROLES)
+  @Post('2fa/setup/confirm')
+  setupConfirm(@Body() dto: CodeDto, @CurrentActor() actor: ActorContext, @Res({ passthrough: true }) res: Response) {
+    res.setHeader('Cache-Control', 'no-store');
+    return this.twoFactor.confirmEnrolment(actor.id!, dto.code, actor);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(...ALL_ROLES)
+  @Post('2fa/recovery-codes/regenerate')
+  regenerateCodes(@Body() dto: PasswordAndCodeDto, @CurrentActor() actor: ActorContext, @Res({ passthrough: true }) res: Response) {
+    res.setHeader('Cache-Control', 'no-store');
+    return this.twoFactor.regenerateRecoveryCodes(actor.id!, dto.password, dto.code, actor);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(...ALL_ROLES)
+  @Post('2fa/disable')
+  disableTwoFactor(@Body() dto: PasswordAndCodeDto, @CurrentActor() actor: ActorContext) {
+    return this.twoFactor.disable(actor.id!, dto.password, dto.code, actor);
+  }
+
+  /** A super admin clears another account's two-step setup (lost phone). Not your own. Signs that account out everywhere. */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(ROLES.SUPER_ADMIN)
+  @Post('users/:id/2fa/reset')
+  resetTwoFactor(@Param('id') id: string, @CurrentActor() actor: ActorContext) {
+    return this.twoFactor.adminReset(id, actor);
   }
 
   @Public()

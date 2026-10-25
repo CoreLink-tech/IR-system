@@ -6,7 +6,9 @@ import { createHash, randomBytes, randomUUID } from 'crypto';
 import { deviceLabel } from './device-label';
 import { assertStrongPassword, checkPassword } from './password-policy';
 import { LoginThrottleService } from './login-throttle.service';
-import { Decision, isExempt, loginKey } from './login-throttle';
+import { CHALLENGE_SECONDS, TwoFactorService } from './two-factor.service';
+import { Decision, isExempt, loginKey, waitText } from './login-throttle';
+export { waitText };
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AUDIT_ACTIONS, ROLES } from '../common/constants';
@@ -31,13 +33,14 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly audit: AuditService,
     private readonly throttle: LoginThrottleService,
+    private readonly twoFactor: TwoFactorService,
   ) {}
 
   private hashRefresh(token: string): string {
     return createHash('sha256').update(token).digest('hex');
   }
 
-  async login(email: string, password: string, ctx: { ip?: string; userAgent?: string; requestId?: string }) {
+  async login(email: string, password: string, ctx: { ip?: string; userAgent?: string; requestId?: string; useCookie?: boolean }) {
     // Lockout. Counted per email address, whether or not an account exists, so a lock looks the same for real
     // and invented addresses. The attempt is counted and any lock set BEFORE the password is checked, so
     // simultaneous attempts cannot get around it. While locked the password is not checked at all.
@@ -74,11 +77,31 @@ export class AuthService {
     if (!ok) return refuse({ actorType: 'USER', actorId: user.id, actorLabel: user.email });
     if (!exempt) await this.throttle.reset(key);
 
+    // The password is right. With two-step verification on, no session yet: a short-lived step asks for the code.
+    // Where it is required but not set up, the step makes the person set it up before they get in.
+    if (user.totpEnabledAt) {
+      return { twoFactorRequired: true as const, challengeToken: await this.twoFactor.signChallenge(user, 'mfa', ctx.useCookie), expiresInSeconds: CHALLENGE_SECONDS };
+    }
+    if (this.twoFactor.isRequiredFor(user.role)) {
+      return { twoFactorEnrollmentRequired: true as const, challengeToken: await this.twoFactor.signChallenge(user, 'enroll', ctx.useCookie), expiresInSeconds: CHALLENGE_SECONDS };
+    }
+    return this.finishSignIn(user, ctx);
+  }
+
+  /** Starts the session once every step has passed. `method` says how the second step was done, for the audit log. */
+  async completeSignIn(userId: string, ctx: { ip?: string; userAgent?: string; requestId?: string }, method: 'totp' | 'recovery' | 'enrolment') {
+    const user = await this.prisma.securityUser.findUnique({ where: { id: userId } });
+    if (!user || !user.isActive) throw new UnauthorizedException('Invalid credentials');
+    return this.finishSignIn(user, ctx, method);
+  }
+
+  private async finishSignIn(user: any, ctx: { ip?: string; userAgent?: string; requestId?: string }, twoFactor?: string) {
     const tokens = await this.issueTokens(user, ctx);
     await this.prisma.securityUser.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
     await this.audit.log({
       requestId: ctx.requestId, actorType: 'USER', actorId: user.id, actorLabel: user.email,
       action: AUDIT_ACTIONS.LOGIN, result: 'SUCCESS', ipAddress: ctx.ip, userAgent: ctx.userAgent,
+      ...(twoFactor ? { metadata: { twoFactor } } : {}),
     });
     return { user: this.publicUser(user), ...tokens };
   }
@@ -255,11 +278,4 @@ export class AuthService {
   private publicUser(user: any) {
     return { id: user.id, email: user.email, name: user.name, role: user.role, isActive: user.isActive, mustChangePassword: !!user.mustChangePassword };
   }
-}
-
-/** "30 seconds", "1 minute", "5 minutes": how long to wait, in words a person can use. */
-export function waitText(seconds: number): string {
-  if (seconds < 90) return `${seconds} second${seconds === 1 ? '' : 's'}`;
-  const m = Math.ceil(seconds / 60);
-  return `${m} minute${m === 1 ? '' : 's'}`;
 }

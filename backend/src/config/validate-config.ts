@@ -8,6 +8,7 @@
  * loudly instead of producing a server that looks fine and is wide open.
  */
 import { loadLockoutConfig } from '../auth/login-throttle';
+import { twoFactorProblems } from '../auth/two-factor.config';
 import { blocklistFileProblems } from '../auth/password-policy';
 import { loadRetentionConfig } from '../retention/retention.config';
 import { parseTrustedProxies, trustedProxyProblems } from '../common/utils/ip.util';
@@ -61,6 +62,7 @@ export function validateConfig(env: NodeJS.ProcessEnv = process.env): ConfigRepo
   loadRetentionConfig(env).errors.forEach((m) => errors.push(m));
   blocklistFileProblems(env).forEach((m) => errors.push(m));
   loadLockoutConfig(env).errors.forEach((m) => errors.push(m));
+  twoFactorProblems(env).forEach((m) => errors.push(m));
 
   const trusted = parseTrustedProxies(env.TRUSTED_PROXIES);
   trustedProxyProblems(trusted).forEach((m) => errors.push(m));

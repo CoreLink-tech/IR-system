@@ -48,7 +48,7 @@ export const RISK_LEVEL = {
 
 export const AUDIT_ACTIONS = {
   LOGIN: 'auth.login', LOGOUT: 'auth.logout', REFRESH: 'auth.refresh',
-  PASSWORD_CHANGE: 'auth.password_change', SESSION_REVOKE: 'auth.session_revoke', LOCKOUT: 'auth.lockout', UNLOCK: 'auth.unlock', SESSIONS_REVOKE_ALL: 'auth.sessions_revoke_all', USER_CREATE: 'user.create',
+  PASSWORD_CHANGE: 'auth.password_change', SESSION_REVOKE: 'auth.session_revoke', LOCKOUT: 'auth.lockout', UNLOCK: 'auth.unlock', TWOFA_ENABLE: 'auth.2fa_enable', TWOFA_FAIL: 'auth.2fa_fail', TWOFA_RECOVERY_USED: 'auth.2fa_recovery_used', TWOFA_RECOVERY_REGEN: 'auth.2fa_recovery_regenerate', TWOFA_DISABLE: 'auth.2fa_disable', TWOFA_RESET: 'auth.2fa_reset', SESSIONS_REVOKE_ALL: 'auth.sessions_revoke_all', USER_CREATE: 'user.create',
   API_KEY_CREATE: 'api_key.create', API_KEY_REVOKE: 'api_key.revoke', API_KEY_ROTATE: 'api_key.rotate',
   EVENT_INGEST: 'event.ingest',
   INCIDENT_CREATE: 'incident.create', INCIDENT_UPDATE: 'incident.update', INCIDENT_ASSIGN: 'incident.assign',

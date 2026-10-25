@@ -1,3 +1,4 @@
+import { TwoFactorService } from '../src/auth/two-factor.service';
 import { LoginThrottleService } from '../src/auth/login-throttle.service';
 import { InMemoryThrottle } from './helpers/in-memory-throttle';
 import 'reflect-metadata';
@@ -73,7 +74,7 @@ describe('sessions and access-token revocation (real guards over HTTP)', () => {
       imports: [PassportModule, JwtModule.register({})],
       controllers: [AuthController],
       providers: [
-        AuthService, UsersService, SessionsService, JwtStrategy, { provide: LoginThrottleService, useValue: throttle },
+        AuthService, TwoFactorService, UsersService, SessionsService, JwtStrategy, { provide: LoginThrottleService, useValue: throttle },
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: { log: async (e: any) => { audit.push(e); } } },
       ],
