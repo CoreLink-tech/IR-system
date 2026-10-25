@@ -173,6 +173,82 @@ last used). Every access and refresh token carries the account's **token version
 - Expired and revoked tokens are removed by the cleanup job (see docs/DATABASE.md). A revoked token that has
   not expired yet is kept, so replay of a stolen one is still recognised.
 
+## Two-step verification
+
+Authenticator-app codes (TOTP, RFC 6238) plus recovery codes. The backend is complete; the dashboard
+screens and the break-glass CLI are part of the remaining Stage 10 work.
+
+### When it is required
+`REQUIRE_2FA` defaults to on when `NODE_ENV=production` and off otherwise. When it is on, every
+`SUPER_ADMIN` and `SECURITY_ADMIN` must enrol before they can finish signing in. Other roles may
+turn it on themselves from the settings page. The API refuses to start in production (or whenever
+`REQUIRE_2FA` is true) if `TOTP_ENCRYPTION_KEY` is missing.
+
+### Sign-in flow
+1. Password is accepted. If the account has two-step verification, the response is
+   `{ twoFactorRequired: true, challengeToken, expiresInSeconds: 300 }` and **no session is created**.
+2. The client posts the challenge token plus a 6-digit code (or a recovery code) to
+   `POST /auth/2fa/verify`. On success a normal session is started.
+3. If two-step is required for the role and the account has not enrolled yet, the response is
+   `{ twoFactorEnrollmentRequired: true, challengeToken }` instead. The client then calls
+   `POST /auth/2fa/enroll/start` (returns the secret and otpauth URI) and
+   `POST /auth/2fa/enroll/confirm` with the first code. Confirm returns the ten recovery codes
+   once and starts the session.
+
+The challenge token is a short-lived JWT (`typ: 'mfa'` or `'enroll'`, 5 minutes, bound to the
+account's token version). It cannot be used as an access token.
+
+### Enrolment and recovery codes
+- The secret is generated server-side, encrypted at rest with AES-256-GCM under
+  `TOTP_ENCRYPTION_KEY` (64 hex characters or base64). The ciphertext carries a key fingerprint so
+  a previous key (`TOTP_ENCRYPTION_KEY_PREVIOUS`) still decrypts older secrets during a key change.
+- Ten recovery codes (80 bits each, shown as `XXXX-XXXX-XXXX-XXXX`) are issued once. Only HMAC
+  hashes are stored. Each code is consumed by a single conditional `UPDATE`, so two simultaneous
+  uses cannot both succeed.
+- Clock window: `TOTP_WINDOW` (0, 1 or 2; default 1). Replay protection: the time step of a
+  successful code is claimed with a conditional update, so the same code cannot be reused even
+  inside the window.
+- Code attempts are rate-limited per account with the same growing delays used for passwords
+  (key `mfa:<userId>`). A locked second step answers `429 two_factor_locked`.
+
+### Administrator actions
+- `GET /auth/2fa` returns status (enabled, recovery codes remaining, required or not).
+- Regenerate recovery codes or turn two-step off: both require the current password **and** a
+  current code. Disable is refused for roles that must use it.
+- Super admin only: `POST /auth/users/:id/2fa/reset` clears the secret and codes, ends every
+  session of that account, and is audited. You cannot reset your own account this way
+  (`self_reset_forbidden`). After a reset the person must enrol again at next sign-in if the role
+  requires it.
+- Break-glass and key-change CLI (run from the backend directory after `npm run build`):
+  - `npm run admin:reset-2fa -- <email>` clears two-step verification, ends all sessions of that
+    account, and is audited as SYSTEM / "cli". The person must enrol again at next sign-in if the
+    role requires it.
+  - `npm run admin:unlock -- <email>` clears the sign-in lockout so the next five attempts are free
+    again. Also audited as SYSTEM / "cli".
+  - `npm run admin:reencrypt-2fa` (optional `--dry-run`) re-encrypts every stored TOTP secret with
+    the current `TOTP_ENCRYPTION_KEY`. Use after setting the old key as
+    `TOTP_ENCRYPTION_KEY_PREVIOUS`. Skips secrets already on the current key (resumable).
+    Recovery-code hashes already verify under both keys. After every secret uses the current key
+    you may remove the previous key; any recovery codes that were never re-hashed under the new
+    key will then stop working until the user regenerates them.
+  Commands exit 0 on success and 1 on failure (unknown email, missing secrets, etc.).
+
+### Residual risks (honest)
+- A borrowed unlocked phone or laptop that already has an active session can be used until the
+  session is ended.
+- Recovery codes are only as safe as the place the user stores them. They are shown once; the
+  server never has the plain text again.
+- TOTP is phishable by a live relay (the attacker prompts the victim for the current code). This is
+  a property of the protocol, not of this implementation. Hardware keys or passkeys would be a
+  later improvement.
+- The encryption key protects secrets at rest. If an attacker obtains both the database and the
+  key they can forge codes for any enrolled account. Protect the key the same way you protect
+  `JWT_SECRET`.
+
+Settings: `REQUIRE_2FA`, `TOTP_ENCRYPTION_KEY`, `TOTP_ENCRYPTION_KEY_PREVIOUS`, `TOTP_ISSUER`
+(default "Security Dashboard"), `TOTP_WINDOW` (default 1). Generate the encryption key with
+`openssl rand -hex 32` or `npm run gen:secrets`.
+
 ## Dashboard hosting
 `frontend/deploy/nginx.conf.example` and `security-headers.conf` set a strict Content-Security-Policy
 (`default-src 'none'`; scripts, styles, images and fonts only from the site; `connect-src` only the

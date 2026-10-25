@@ -12,6 +12,7 @@ export { waitText };
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AUDIT_ACTIONS, ROLES } from '../common/constants';
+import { loadAccessKeyRing, loadRefreshKeyRing, secretForKid } from './jwt-keys';
 
 /** Where a request came from, recorded in the audit log. */
 type Ctx = { ip?: string; userAgent?: string; requestId?: string };
@@ -110,18 +111,36 @@ export class AuthService {
    * Issues an access token and a refresh token. Both carry the account's token version (tv) and the
    * session they belong to (sid). A refresh keeps the same session; a sign-in starts a new one.
    */
+
+  /** Verify a refresh JWT, accepting the current or previous secret during a key rotation. */
+  private async verifyRefreshToken(refreshToken: string): Promise<any> {
+    const ring = loadRefreshKeyRing();
+    const secrets = [ring.current, ring.previous].filter(Boolean) as string[];
+    let lastErr: any;
+    for (const secret of secrets) {
+      try {
+        return await this.jwt.verifyAsync(refreshToken, { secret });
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+    throw lastErr ?? new UnauthorizedException('Invalid refresh token');
+  }
+
   private async issueTokens(user: any, ctx: { ip?: string; userAgent?: string }, session?: { id: string; startedAt: Date }) {
     const sessionId = session?.id ?? randomUUID();
     const startedAt = session?.startedAt ?? new Date();
     const tv = user.tokenVersion ?? 0;
+    const accessRing = loadAccessKeyRing();
+    const refreshRing = loadRefreshKeyRing();
     const accessToken = await this.jwt.signAsync(
       { sub: user.id, email: user.email, role: user.role, type: 'access', tv, sid: sessionId },
-      { secret: process.env.JWT_SECRET, expiresIn: process.env.JWT_EXPIRES_IN || '15m' },
+      { secret: accessRing.current, expiresIn: process.env.JWT_EXPIRES_IN || '15m', keyid: accessRing.currentKid },
     );
     const refreshRaw = randomBytes(48).toString('base64url');
     const refreshToken = await this.jwt.signAsync(
       { sub: user.id, nonce: refreshRaw, type: 'refresh', tv, sid: sessionId },
-      { secret: process.env.JWT_REFRESH_SECRET, expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d' },
+      { secret: refreshRing.current, expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d', keyid: refreshRing.currentKid },
     );
     const expiresAt = new Date(Date.now() + REFRESH_TTL_MS);
     await this.prisma.securityRefreshToken.create({
@@ -137,7 +156,7 @@ export class AuthService {
   async refresh(refreshToken: string, ctx: { ip?: string; userAgent?: string; requestId?: string }) {
     let payload: any;
     try {
-      payload = await this.jwt.verifyAsync(refreshToken, { secret: process.env.JWT_REFRESH_SECRET });
+      payload = await this.verifyRefreshToken(refreshToken);
     } catch {
       throw new UnauthorizedException('Invalid refresh token');
     }
@@ -186,7 +205,7 @@ export class AuthService {
   /** Throws 401 unless the value is a correctly signed, unexpired refresh token. */
   async verifyRefreshJwt(refreshToken: string): Promise<void> {
     try {
-      const payload: any = await this.jwt.verifyAsync(refreshToken, { secret: process.env.JWT_REFRESH_SECRET });
+      const payload: any = await this.verifyRefreshToken(refreshToken);
       if (payload.type !== 'refresh') throw new Error('type');
     } catch {
       throw new UnauthorizedException({ message: 'Invalid refresh token', code: 'no_session' });

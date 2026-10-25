@@ -47,6 +47,11 @@ Copy backend/.env.example to backend/.env and fill in:
 - RETENTION_*          How long events, audit entries, incidents, blocks and tokens are kept, and how the cleanup command batches its work. Defaults are safe; see `docs/DATABASE.md`. Run `npm run cleanup` nightly
 - PASSWORD_BLOCKLIST_FILE  Optional text file of extra passwords or words to refuse (one per line). See `docs/SECURITY.md`
 - LOCKOUT_*           Sign-in lockout after repeated wrong passwords: threshold, delays, and networks that are never locked out. See `docs/SECURITY.md`
+- REQUIRE_2FA         Force two-step verification for SUPER_ADMIN and SECURITY_ADMIN. Defaults to on in production. See `docs/SECURITY.md`
+- TOTP_ENCRYPTION_KEY Long random string (64 hex chars or base64) used to encrypt authenticator secrets at rest. Required when REQUIRE_2FA is on. Generate with `openssl rand -hex 32` or `npm run gen:secrets`
+- TOTP_ENCRYPTION_KEY_PREVIOUS Optional previous key during a key change so existing secrets still decrypt
+- TOTP_ISSUER         Name shown in authenticator apps (default "Security Dashboard")
+- TOTP_WINDOW         Clock skew tolerance in steps (0, 1 or 2; default 1)
 - API_KEY_PREFIX        Prefix of generated API keys. Default `IRS_` (earlier builds used `PMS_`: set `API_KEY_PREFIX=PMS_` to keep keys issued by those builds working)
 - CORS_ORIGINS          The dashboard's exact origin(s), comma separated
 - TRUSTED_PROXIES       Reverse proxies whose X-Forwarded-For is believed: addresses, CIDR blocks, or `private`. Empty by default (headers ignored)
@@ -56,6 +61,9 @@ Copy backend/.env.example to backend/.env and fill in:
 Generate secrets:
 
     node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+    # or: npm run gen:secrets   (also prints a TOTP_ENCRYPTION_KEY)
+
+Upgrade note (Stage 10 two-step verification): in production every SUPER_ADMIN and SECURITY_ADMIN must enrol at next sign-in. The server will not start without TOTP_ENCRYPTION_KEY when REQUIRE_2FA is on (the production default).
 
 ## API Overview
 

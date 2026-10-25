@@ -9,6 +9,7 @@
  */
 import { loadLockoutConfig } from '../auth/login-throttle';
 import { twoFactorProblems } from '../auth/two-factor.config';
+import { jwtKeyProblems } from '../auth/jwt-keys';
 import { blocklistFileProblems } from '../auth/password-policy';
 import { loadRetentionConfig } from '../retention/retention.config';
 import { parseTrustedProxies, trustedProxyProblems } from '../common/utils/ip.util';
@@ -39,10 +40,16 @@ export function validateConfig(env: NodeJS.ProcessEnv = process.env): ConfigRepo
 
   checkSecret('JWT_SECRET', env.JWT_SECRET, 32, errors);
   checkSecret('JWT_REFRESH_SECRET', env.JWT_REFRESH_SECRET, 32, errors);
+  if (env.JWT_SECRET_PREVIOUS) checkSecret('JWT_SECRET_PREVIOUS', env.JWT_SECRET_PREVIOUS, 32, errors);
+  if (env.JWT_REFRESH_SECRET_PREVIOUS) checkSecret('JWT_REFRESH_SECRET_PREVIOUS', env.JWT_REFRESH_SECRET_PREVIOUS, 32, errors);
   if (env.JWT_SECRET && env.JWT_SECRET === env.JWT_REFRESH_SECRET) {
     errors.push('JWT_SECRET and JWT_REFRESH_SECRET must be different, or a refresh token could be used as an access token.');
   }
   checkSecret('API_KEY_HASH_PEPPER', env.API_KEY_HASH_PEPPER, 16, errors);
+  if (env.API_KEY_HASH_PEPPER_PREVIOUS) checkSecret('API_KEY_HASH_PEPPER_PREVIOUS', env.API_KEY_HASH_PEPPER_PREVIOUS, 16, errors);
+  if (env.API_KEY_HASH_PEPPER && env.API_KEY_HASH_PEPPER_PREVIOUS && env.API_KEY_HASH_PEPPER === env.API_KEY_HASH_PEPPER_PREVIOUS) {
+    errors.push('API_KEY_HASH_PEPPER and API_KEY_HASH_PEPPER_PREVIOUS must be different.');
+  }
 
   if (!env.DATABASE_URL) {
     errors.push('DATABASE_URL is not set.');
@@ -63,6 +70,7 @@ export function validateConfig(env: NodeJS.ProcessEnv = process.env): ConfigRepo
   blocklistFileProblems(env).forEach((m) => errors.push(m));
   loadLockoutConfig(env).errors.forEach((m) => errors.push(m));
   twoFactorProblems(env).forEach((m) => errors.push(m));
+  jwtKeyProblems(env).forEach((m) => errors.push(m));
 
   const trusted = parseTrustedProxies(env.TRUSTED_PROXIES);
   trustedProxyProblems(trusted).forEach((m) => errors.push(m));

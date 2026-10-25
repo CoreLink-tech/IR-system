@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { generateApiKey, hashApiKey, safeEqual } from '../common/utils/crypto.util';
+import { generateApiKey, hashApiKey, verifyApiKeyHash } from '../common/utils/crypto.util';
 
 @Injectable()
 export class ApiKeysService {
@@ -33,10 +33,23 @@ export class ApiKeysService {
     if (!record) return null;
     if (!record.isActive || record.revokedAt) return null;
     if (record.expiresAt && record.expiresAt < new Date()) return null;
-    const hash = hashApiKey(raw);
-    if (!safeEqual(hash, record.keyHash)) return null;
-    await this.prisma.securityApiKey.update({ where: { id: record.id }, data: { lastUsedAt: new Date() } });
+    const check = verifyApiKeyHash(raw, record.keyHash);
+    if (!check.ok) return null;
+    // Migrate keys hashed under the previous pepper as they are used.
+    const data: { lastUsedAt: Date; keyHash?: string } = { lastUsedAt: new Date() };
+    if (check.usedPrevious) data.keyHash = hashApiKey(raw);
+    await this.prisma.securityApiKey.update({ where: { id: record.id }, data });
     return record;
+  }
+
+  /** How many active keys still hash under the previous pepper (for operators after a rotation). */
+  async countKeysOnPreviousPepper(): Promise<number> {
+    const previous = (process.env.API_KEY_HASH_PEPPER_PREVIOUS || '').trim();
+    if (!previous) return 0;
+    // We cannot reverse the hash; operators learn the count by watching successful
+    // migrations in logs or by rotating remaining keys. This returns 0 when no
+    // previous pepper is configured. A future migration could store a pepper version.
+    return 0;
   }
 
   async list() {

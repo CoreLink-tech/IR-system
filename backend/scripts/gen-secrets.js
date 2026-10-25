@@ -6,4 +6,5 @@ console.log('# Paste these into .env (each run produces new values)');
 console.log(`JWT_SECRET=${r(48)}`);
 console.log(`JWT_REFRESH_SECRET=${r(48)}`);
 console.log(`API_KEY_HASH_PEPPER=${r(24)}`);
+console.log(`TOTP_ENCRYPTION_KEY=${r(32)}`);
 console.log(`BOOTSTRAP_ADMIN_PASSWORD=${r(12)}`);

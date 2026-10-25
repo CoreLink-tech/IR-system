@@ -1,5 +1,6 @@
 import { createHash, createHmac, timingSafeEqual } from 'crypto';
 import { isAllowedOrigin } from '../common/utils/origins';
+import { loadRefreshKeyRing } from './jwt-keys';
 
 /**
  * Browser sign-in keeps the refresh token in an httpOnly cookie, so a script injected
@@ -11,6 +12,9 @@ import { isAllowedOrigin } from '../common/utils/origins';
  *   2. The Origin header must exactly match a dashboard origin in CORS_ORIGINS.
  *   3. A token in the X-CSRF-Token header, derived from the refresh token itself. Another
  *      site cannot read it (CORS blocks that) and it changes whenever the token rotates.
+ *
+ * During a refresh-secret rotation, CSRF tokens computed with either the current or the
+ * previous key are accepted so an in-flight page is not locked out.
  *
  * The cookie is scoped to the auth routes, so it is not sent with ordinary API calls.
  */
@@ -33,7 +37,7 @@ export function parseCookies(header: unknown): Record<string, string> {
     if (i < 1) continue;
     const name = part.slice(0, i).trim();
     const value = part.slice(i + 1).trim();
-    if (!(name in out)) out[name] = value; // first one wins, as browsers send the most specific first
+    if (!(name in out)) out[name] = value;
   }
   return out;
 }
@@ -59,10 +63,26 @@ export function clearRefreshCookie(env: NodeJS.ProcessEnv = process.env): string
   return buildRefreshCookie('', 0, env);
 }
 
-/** Bound to one refresh token. Rotating the token changes it. */
-export function csrfTokenFor(refreshToken: string, env: NodeJS.ProcessEnv = process.env): string {
+function csrfWithSecret(refreshToken: string, secret: string): string {
   const bound = createHash('sha256').update(refreshToken).digest('hex');
-  return createHmac('sha256', String(env.JWT_REFRESH_SECRET)).update(`csrf:${bound}`).digest('base64url');
+  return createHmac('sha256', secret).update(`csrf:${bound}`).digest('base64url');
+}
+
+/** Bound to one refresh token. Always computed with the current refresh secret. */
+export function csrfTokenFor(refreshToken: string, env: NodeJS.ProcessEnv = process.env): string {
+  const ring = loadRefreshKeyRing(env);
+  return csrfWithSecret(refreshToken, ring.current);
+}
+
+function csrfMatches(given: string, refreshToken: string, env: NodeJS.ProcessEnv = process.env): boolean {
+  const ring = loadRefreshKeyRing(env);
+  const a = Buffer.from(given);
+  const candidates = [ring.current, ring.previous].filter(Boolean) as string[];
+  for (const secret of candidates) {
+    const b = Buffer.from(csrfWithSecret(refreshToken, secret));
+    if (a.length === b.length && timingSafeEqual(a, b)) return true;
+  }
+  return false;
 }
 
 export type CsrfFailure = 'origin' | 'token';
@@ -74,8 +94,6 @@ export function checkCookieRequest(
   if (!isAllowedOrigin(req.headers?.origin, env)) return 'origin';
   const given = req.headers?.[CSRF_HEADER];
   if (typeof given !== 'string' || given.length === 0) return 'token';
-  const a = Buffer.from(given);
-  const b = Buffer.from(csrfTokenFor(refreshToken, env));
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return 'token';
+  if (!csrfMatches(given, refreshToken, env)) return 'token';
   return null;
 }

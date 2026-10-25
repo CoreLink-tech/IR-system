@@ -13,7 +13,7 @@ created or changed.
     cd backend
     npx prisma migrate deploy
 
-This applies all eight migrations in order and records them in `_prisma_migrations`.
+This applies all nine migrations in order and records them in `_prisma_migrations`.
 
 ## Existing database (created earlier with `prisma db push`)
 
@@ -39,8 +39,8 @@ Take a backup first (see the backup runbook when it is added in a later Stage 10
         npx prisma migrate deploy
         npx prisma migrate status
 
-A database that has every migration is all `present = 1`: mark all eight as applied and there is nothing to deploy.
-A Stage 9 database has the first five; deploy the rest (the index migration changes no data; the sessions migration adds columns and gives every existing sign-in its own session).
+A database that has every migration is all `present = 1`: mark all nine as applied and there is nothing to deploy.
+A Stage 9 database has the first five; deploy the rest (the index migration changes no data; the sessions migration adds columns and gives every existing sign-in its own session; the two-factor migration adds columns and a table with no effect on existing rows).
 
 ## Every schema change shipped so far
 
@@ -54,6 +54,7 @@ A Stage 9 database has the first five; deploy the rest (the index migration chan
 | `20260101000500_stage10_indexes` | Stage 10 | Index review: five composite event indexes and one audit index added, seven single-column or duplicate indexes dropped | None. Indexes only, see "Index review" |
 | `20260101000600_stage10_sessions_and_token_version` | Stage 10 | `security_users.tokenVersion` (default 0) and `passwordChangedAt`; `security_refresh_tokens.sessionId`, `sessionStartedAt`, `lastUsedAt`, `deviceLabel`, `revokedReason` and an index on `sessionId` | Each existing sign-in becomes its own session (started when it was created). Existing accounts start at version 0, so nobody is signed out |
 | `20260101000700_stage10_login_throttle` | Stage 10 | New table `security_login_throttle` (failed sign-in counters per hashed email) | None. Starts empty. Old rows are removed by the cleanup job |
+| `20260101000800_stage10_two_factor` | Stage 10 | `security_users.totpSecret`, `totpEnabledAt`, `totpLastStep`; new table `security_recovery_codes` (hashed codes only, cascade on user delete) | None. Existing accounts have two-step off. Retention does not touch recovery codes; they cascade with their user |
 
 ### How existing rows are backfilled (Stage 8)
 

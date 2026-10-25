@@ -22,8 +22,22 @@ Two ways to hold the long-lived refresh token:
 
 ### POST /api/v1/auth/login
 Body: { "email": "...", "password": "...", "useCookie": true? }
-Returns { user, accessToken, refreshToken } (body mode), or { user, accessToken, csrfToken }
-and a `Set-Cookie` (cookie mode). `user` is { id, email, name, role, isActive, mustChangePassword }.
+
+Three possible outcomes (never mixed):
+
+1. **Session started** (no two-step required, or already satisfied):  
+   Body mode → `{ user, accessToken, refreshToken }`.  
+   Cookie mode → `{ user, accessToken, csrfToken }` + `Set-Cookie: ir_rt=...`.  
+   `user` is `{ id, email, name, role, isActive, mustChangePassword, twoFactorEnabled }`.
+
+2. **Second step needed**: `{ twoFactorRequired: true, challengeToken, expiresInSeconds: 300 }`.  
+   No session is created. Client must call `POST /auth/2fa/verify` with the challenge token and a code (or recovery code).
+
+3. **Enrolment required** (role is SUPER_ADMIN or SECURITY_ADMIN, REQUIRE_2FA is on, account has no 2FA yet):  
+   `{ twoFactorEnrollmentRequired: true, challengeToken, expiresInSeconds: 300 }`.  
+   Client must call `POST /auth/2fa/enroll/start` then `POST /auth/2fa/enroll/confirm`.
+
+Error codes of interest: `invalid_credentials` (401, may include `retryAfterSeconds`), `account_locked` (429), `two_factor_locked` (429, after too many bad codes).
 
 ### POST /api/v1/auth/refresh
 Body: { "refreshToken": "..." } for body mode. With no body token the cookie is used (cookie
@@ -40,6 +54,44 @@ password. The attempt that triggers the lock answers `401` with `code: "invalid_
 `retryAfterSeconds`. A real and an invented address behave identically. `POST /auth/users/:id/unlock`
 (super admin) lets the account sign in at once. `GET /auth/users` includes `lockedUntil` (null when not
 locked). See docs/SECURITY.md.
+
+### Two-step verification
+
+All routes below are under `/api/v1/auth`. Challenge tokens are short-lived JWTs (`typ: 'mfa'` or `'enroll'`, 5 minutes) and cannot be used as access tokens.
+
+#### POST /auth/2fa/verify — public (needs valid challengeToken)
+Body: `{ "challengeToken": "...", "code": "123456" }` **or** `{ "challengeToken": "...", "recoveryCode": "XXXX-XXXX-XXXX-XXXX" }`  
+Success: starts a session (same shape as a normal login).  
+Errors: `invalid_code`, `two_factor_locked` (429 + retryAfterSeconds), `challenge_expired`, `code_required`.
+
+#### POST /auth/2fa/enroll/start — public (needs enroll challengeToken)
+Body: `{ "challengeToken": "..." }`  
+Returns: `{ secret, otpauthUri, recoveryCodesRemaining: 0 }`.
+
+#### POST /auth/2fa/enroll/confirm — public (needs enroll challengeToken)
+Body: `{ "challengeToken": "...", "code": "123456" }`  
+Success: returns the ten recovery codes once and starts the session.  
+Errors: `invalid_code`, `no_pending_enrolment`, `enrolment_conflict`, `challenge_expired`.
+
+#### GET /auth/2fa — JWT (any role)
+Status: `{ enabled, required, recoveryCodesRemaining, enrolledAt }`.
+
+#### POST /auth/2fa/setup/start — JWT (optional enrolment)
+Returns `{ secret, otpauthUri }`.
+
+#### POST /auth/2fa/setup/confirm — JWT
+Body: `{ "code": "123456" }`. Returns the ten recovery codes once.
+
+#### POST /auth/2fa/recovery-codes/regenerate — JWT
+Body: `{ "password": "...", "code": "123456" }`. Returns new codes once.
+
+#### POST /auth/2fa/disable — JWT
+Body: `{ "password": "...", "code": "123456" }`. Refused with `two_factor_required` when the role must keep it on.
+
+#### POST /auth/users/:id/2fa/reset — JWT (SUPER_ADMIN only)
+Clears secret and codes, ends all sessions. Cannot target yourself (`self_reset_forbidden`).
+
+Error codes: `invalid_code`, `two_factor_locked`, `challenge_expired`, `two_factor_required`, `two_factor_unavailable`, `two_factor_already_enabled`, `no_pending_enrolment`, `enrolment_conflict`, `code_required`, `self_reset_forbidden`.
 
 ### Sessions
     GET    /api/v1/auth/sessions                          any role: my active sessions, newest use first

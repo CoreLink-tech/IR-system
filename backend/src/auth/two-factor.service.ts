@@ -13,6 +13,7 @@ import { Decision, waitText } from './login-throttle';
 import { isMandatoryRole, twoFactorConfig } from './two-factor.config';
 import { KeyRing, decryptSecret, encryptSecret, hashRecoveryCode, hashRecoveryCodeAll, looksLikeRecoveryCode, newRecoveryCode } from './two-factor.crypto';
 import { newTotpSecret, otpauthUri, verifyTotp } from './totp';
+import { loadAccessKeyRing, secretForKid } from './jwt-keys';
 
 export const CHALLENGE_SECONDS = 300;
 export const RECOVERY_CODE_COUNT = 10;
@@ -47,13 +48,20 @@ export class TwoFactorService {
 
   /** "mfa" = enter your code, "enroll" = you must set up two-step verification first. Not an access token. */
   signChallenge(user: any, purpose: 'mfa' | 'enroll', useCookie?: boolean): Promise<string> {
-    return this.jwt.signAsync({ sub: user.id, typ: purpose, tv: user.tokenVersion ?? 0, uc: !!useCookie }, { secret: process.env.JWT_SECRET, expiresIn: CHALLENGE_SECONDS });
+    const ring = loadAccessKeyRing();
+    return this.jwt.signAsync({ sub: user.id, typ: purpose, tv: user.tokenVersion ?? 0, uc: !!useCookie }, { secret: ring.current, expiresIn: CHALLENGE_SECONDS, keyid: ring.currentKid });
   }
 
   async readChallenge(token: string, purpose: 'mfa' | 'enroll'): Promise<{ user: any; useCookie: boolean }> {
     const expired = () => new UnauthorizedException({ message: 'This sign-in step has expired. Please sign in again.', code: 'challenge_expired' });
     let p: any;
-    try { p = await this.jwt.verifyAsync(token, { secret: process.env.JWT_SECRET }); } catch { throw expired(); }
+    const ring = loadAccessKeyRing();
+    const secrets = [ring.current, ring.previous].filter(Boolean) as string[];
+    let ok = false;
+    for (const secret of secrets) {
+      try { p = await this.jwt.verifyAsync(token, { secret }); ok = true; break; } catch { /* try next */ }
+    }
+    if (!ok) throw expired();
     if (p.typ !== purpose) throw expired();
     const user = await this.prisma.securityUser.findUnique({ where: { id: p.sub } });
     if (!user || !user.isActive || (user.tokenVersion ?? 0) !== (p.tv ?? 0)) throw expired();
@@ -261,4 +269,21 @@ export class TwoFactorService {
     });
     return { ok: true, mustEnrolAtNextSignIn: this.isRequiredFor(target.role) };
   }
+  /**
+   * Break-glass CLI: clear two-step verification by email. Allowed even for the only super admin.
+   * Audited as actorType SYSTEM, label "cli". Used by `npm run admin:reset-2fa`.
+   */
+  async cliResetByEmail(email: string): Promise<{ ok: true; email: string; wasEnabled: boolean; mustEnrolAtNextSignIn: boolean }> {
+    const target = await this.prisma.securityUser.findUnique({ where: { email: email.trim().toLowerCase() } });
+    if (!target) throw new NotFoundException({ message: `No account found for ${email}`, code: 'user_not_found' });
+    const wasEnabled = !!target.totpEnabledAt;
+    await this.clear(target.id, 'two_factor_reset_cli');
+    await this.audit.log({
+      actorType: 'SYSTEM', actorLabel: 'cli', action: AUDIT_ACTIONS.TWOFA_RESET,
+      targetType: 'user', targetId: target.id, result: 'SUCCESS',
+      metadata: { email: target.email, wasEnabled, via: 'admin:reset-2fa' },
+    });
+    return { ok: true, email: target.email, wasEnabled, mustEnrolAtNextSignIn: this.isRequiredFor(target.role) };
+  }
+
 }

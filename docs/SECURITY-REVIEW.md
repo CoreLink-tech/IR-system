@@ -129,6 +129,16 @@ that fails without it. Items marked "not verified" say how the owner can check t
   with jitter as a backstop. Verified: 40 simultaneous attempts on one account and 300 across five, three runs in a
   row, no errors (`test/login-throttle-db.spec.ts`). The in-memory tests could not have found it.
 
+### F-15 In-memory tests could not prove atomic single use of a TOTP code or recovery code
+- Where: recovery-code consumption and TOTP step claiming both use a conditional UPDATE so that two
+  simultaneous successful checks cannot both succeed. An in-memory stand-in cannot prove database
+  atomicity or isolation.
+- Fix / evidence: real-database tests in `test/two-factor-db.spec.ts` (gated, run with
+  `RETENTION_TEST_CONFIRM=yes` against a scratch `ir_*` database). Mutation check: removing the
+  conditional clause makes the concurrent-use test fail; restoring it makes the test pass.
+- Residual: the real-database suite must be run before go-live on the same engine the production
+  deployment will use.
+
 ## Verification notes for workstream 1
 - Backend: 715 tests passing, run against the repository's Prisma 5 package set (the Prisma engine is
   not needed by these tests, which use in-memory stand-ins).
