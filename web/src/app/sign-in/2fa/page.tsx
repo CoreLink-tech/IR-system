@@ -26,7 +26,7 @@ export default function TwoFactorVerifyPage() {
         : { challengeToken, code: code.replace(/\s/g, '') };
       const result = await api<{ accessToken: string }>('/auth/2fa/verify', { method: 'POST', json: body });
       setAccessToken(result.accessToken);
-      sessionStorage.setItem('ir_at', result.accessToken);
+      
       sessionStorage.removeItem('ir_challenge');
       router.replace('/overview');
     } catch (err) {

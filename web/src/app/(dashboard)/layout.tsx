@@ -14,6 +14,8 @@ const NAV = [
   { href: '/admin/users', label: 'Users' },
   { href: '/admin/api-keys', label: 'API keys' },
   { href: '/admin/audit', label: 'Audit' },
+  { href: '/admin/rules', label: 'Rules' },
+  { href: '/admin/settings', label: 'Settings' },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -23,15 +25,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!getAccessToken()) {
-      const stored = sessionStorage.getItem('ir_at');
-      if (stored) setAccessToken(stored);
-    }
     api<{ user: PublicUser }>('/auth/me')
       .then((r) => setUser(r.user))
       .catch(() => {
         setAccessToken(null);
-        sessionStorage.removeItem('ir_at');
+        
         router.replace('/sign-in');
       })
       .finally(() => setLoading(false));
@@ -70,7 +68,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               onClick={async () => {
                 try { await fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }); } catch { /* */ }
                 setAccessToken(null);
-                sessionStorage.removeItem('ir_at');
+                
                 router.replace('/sign-in');
               }}
             >

@@ -2,6 +2,8 @@ import { desc, eq } from 'drizzle-orm';
 import { err, json, requestId } from '@/server/api';
 import { requireUser } from '@/server/auth/require-user';
 import { ingestEvent, verifyApiKey, type IngestBody } from '@/server/services/events';
+import { rateLimit } from '@/server/services/rate-limit';
+import { clientIp } from '@/server/api';
 import { db } from '@/server/db/client';
 import { events } from '@/server/db/schema';
 
@@ -50,6 +52,11 @@ export async function POST(req: Request) {
   const scopes = key.scopes.split(',').map((s) => s.trim());
   if (!scopes.includes('events:write') && !scopes.includes('*')) {
     return err(403, 'API key lacks events:write scope', { code: 'forbidden', requestId: rid });
+  }
+
+  const rl = rateLimit(`ingest:${key.id}:${clientIp(req)}`, 120, 60_000);
+  if (!rl.ok) {
+    return err(429, 'Too many events', { code: 'rate_limited', requestId: rid, retryAfterSeconds: rl.retryAfterSeconds });
   }
 
   let body: IngestBody;

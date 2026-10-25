@@ -39,7 +39,7 @@ export default function SessionsPage() {
           if (!window.confirm('Sign out on every device, including this one?')) return;
           await api('/auth/sessions/revoke-all', { method: 'POST', json: {} });
           setAccessToken(null);
-          sessionStorage.removeItem('ir_at');
+          
           router.replace('/sign-in');
         }}
       >

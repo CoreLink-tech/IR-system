@@ -23,7 +23,7 @@ export default function ChangePasswordPage() {
       });
       setOk(true);
       setAccessToken(null);
-      sessionStorage.removeItem('ir_at');
+      
       setTimeout(() => router.replace('/sign-in'), 1500);
     } catch (err) {
       setMessage(err instanceof ApiError ? err.message : 'Failed');

@@ -48,7 +48,7 @@ export default function TwoFactorEnrollPage() {
         json: { challengeToken, code: code.replace(/\s/g, '') },
       });
       setAccessToken(result.accessToken);
-      sessionStorage.setItem('ir_at', result.accessToken);
+      
       setRecoveryCodes(result.recoveryCodes || []);
     } catch (err) {
       setMessage(

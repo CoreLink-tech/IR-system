@@ -48,21 +48,34 @@ function scrubMetadata(meta: Record<string, unknown> | undefined): string | null
   return JSON.stringify(out);
 }
 
-function scoreEvent(type: string, severity?: string): { riskScore: number; riskLevel: string; matched: string[] } {
+async function scoreEvent(type: string, severity?: string): Promise<{ riskScore: number; riskLevel: string; matched: string[]; autoBlockThreshold: number; blockMinutes: number }> {
+  const { getRuleRuntime } = await import('@/server/services/rules');
+  const rules = await getRuleRuntime();
   const matched: string[] = [];
   let riskScore = 0;
-  if (type === 'login_failed') { riskScore += 25; matched.push('login_failed'); }
-  if (type === 'suspicious_request') { riskScore += 40; matched.push('suspicious_request'); }
-  if (type === 'rate_limit_exceeded') { riskScore += 30; matched.push('rate_limit'); }
-  if (type === 'payment_security_event') { riskScore += 50; matched.push('payment'); }
-  if (type === 'admin_access') { riskScore += 15; matched.push('admin_access'); }
+  const add = (code: string, eventTypes: string[]) => {
+    const r = rules[code];
+    if (!r?.enabled) return;
+    if (eventTypes.includes(type)) {
+      riskScore += r.config.baseScore ?? 0;
+      matched.push(code);
+    }
+  };
+  add('login_failed', ['login_failed']);
+  add('suspicious_request', ['suspicious_request']);
+  add('rate_limit', ['rate_limit_exceeded']);
+  add('payment', ['payment_security_event']);
+  add('admin_access', ['admin_access']);
   if (severity === 'CRITICAL') riskScore += 30;
   else if (severity === 'HIGH') riskScore += 20;
   else if (severity === 'MEDIUM') riskScore += 10;
   riskScore = Math.min(100, riskScore);
   const riskLevel =
     riskScore >= 85 ? 'CRITICAL' : riskScore >= 60 ? 'HIGH' : riskScore >= 30 ? 'SUSPICIOUS' : 'NORMAL';
-  return { riskScore, riskLevel, matched };
+  const ab = rules['auto_block'];
+  const autoBlockThreshold = ab?.enabled ? (ab.config.threshold ?? 85) : 999;
+  const blockMinutes = ab?.config.blockMinutes ?? 60;
+  return { riskScore, riskLevel, matched, autoBlockThreshold, blockMinutes };
 }
 
 function isPrivateIp(ip: string): boolean {
@@ -96,7 +109,7 @@ export async function ingestEvent(apiKeyId: string, body: IngestBody) {
     }
   }
 
-  const { riskScore, riskLevel, matched } = scoreEvent(body.event_type, body.severity);
+  const { riskScore, riskLevel, matched, autoBlockThreshold, blockMinutes } = await scoreEvent(body.event_type, body.severity);
   const eventId = newId();
   const occurredAt = body.timestamp ? new Date(body.timestamp) : new Date();
 
@@ -135,7 +148,7 @@ export async function ingestEvent(apiKeyId: string, body: IngestBody) {
     }
 
     // Auto-block high risk (never private / allowlisted)
-    if (riskScore >= 85 && body.ip_address && !isPrivateIp(body.ip_address)) {
+    if (riskScore >= autoBlockThreshold && body.ip_address && !isPrivateIp(body.ip_address)) {
       const allowed = await db.select().from(allowlist).where(eq(allowlist.ipAddress, body.ip_address)).limit(1);
       if (!allowed[0]) {
         const activeKey = `block:${body.ip_address}`;
@@ -143,7 +156,7 @@ export async function ingestEvent(apiKeyId: string, body: IngestBody) {
           .where(and(eq(ipBlocks.activeKey, activeKey), eq(ipBlocks.active, true)))
           .limit(1);
         if (!existingBlock[0]) {
-          const expires = new Date(Date.now() + 60 * 60 * 1000);
+          const expires = new Date(Date.now() + blockMinutes * 60 * 1000);
           await db.insert(ipBlocks).values({
             id: newId(),
             ipAddress: body.ip_address,

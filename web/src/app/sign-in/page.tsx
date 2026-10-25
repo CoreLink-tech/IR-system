@@ -30,7 +30,7 @@ export default function SignInPage() {
       }
       if ('accessToken' in result) {
         setAccessToken(result.accessToken);
-        sessionStorage.setItem('ir_at', result.accessToken);
+        
         router.replace('/overview');
       }
     } catch (err) {
