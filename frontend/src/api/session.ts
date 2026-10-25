@@ -1,5 +1,6 @@
 import { config } from '@/lib/config';
-import type { LoginResult, User } from './types';
+import type { LoginResult, LoginSession, User } from './types';
+import { isLoginSession } from './types';
 import { ApiError } from './errors';
 
 /**
@@ -140,7 +141,7 @@ export async function ensureToken(): Promise<string | null> {
   return outcome === 'ok' || (outcome === 'offline' && accessToken && accessExpiresAt > Date.now()) ? accessToken : null;
 }
 
-export async function signIn(email: string, password: string): Promise<User> {
+export async function signIn(email: string, password: string): Promise<LoginResult> {
   let res: Response;
   try {
     res = await fetch(url('/auth/login'), {
@@ -153,12 +154,73 @@ export async function signIn(email: string, password: string): Promise<User> {
   if (!res.ok) {
     throw new ApiError({
       kind: 'http', status: res.status, message: body?.message, code: body?.code, requestId: body?.requestId,
-      retryAfterSeconds: parseRetryAfter(res.headers.get('Retry-After')),
+      retryAfterSeconds: parseRetryAfter(res.headers.get('Retry-After')) ?? body?.retryAfterSeconds,
     });
   }
-  apply(body as LoginResult);
+  const result = body as LoginResult;
+  if (isLoginSession(result)) {
+    apply(result);
+    startIdleWatch();
+  }
+  return result;
+}
+
+/** Complete the second step of sign-in with a TOTP or recovery code. */
+export async function verifyTwoFactor(challengeToken: string, code?: string, recoveryCode?: string): Promise<User> {
+  let res: Response;
+  try {
+    res = await fetch(url('/auth/2fa/verify'), {
+      method: 'POST', credentials: 'include', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ challengeToken, code, recoveryCode }),
+    });
+  } catch { throw new ApiError({ kind: 'network' }); }
+  const body = await json(res);
+  if (!res.ok) {
+    throw new ApiError({
+      kind: 'http', status: res.status, message: body?.message, code: body?.code, requestId: body?.requestId,
+      retryAfterSeconds: parseRetryAfter(res.headers.get('Retry-After')) ?? body?.retryAfterSeconds,
+    });
+  }
+  apply(body as LoginSession);
   startIdleWatch();
-  return (body as LoginResult).user;
+  return (body as LoginSession).user;
+}
+
+/** Start required enrolment (returns secret + otpauth URI). */
+export async function enrollStart(challengeToken: string): Promise<{ secret: string; otpauthUri: string }> {
+  let res: Response;
+  try {
+    res = await fetch(url('/auth/2fa/enroll/start'), {
+      method: 'POST', credentials: 'include', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ challengeToken }),
+    });
+  } catch { throw new ApiError({ kind: 'network' }); }
+  const body = await json(res);
+  if (!res.ok) {
+    throw new ApiError({ kind: 'http', status: res.status, message: body?.message, code: body?.code, requestId: body?.requestId });
+  }
+  return body;
+}
+
+/** Confirm required enrolment with first code; returns recovery codes and starts session. */
+export async function enrollConfirm(challengeToken: string, code: string): Promise<{ user: User; recoveryCodes: string[] }> {
+  let res: Response;
+  try {
+    res = await fetch(url('/auth/2fa/enroll/confirm'), {
+      method: 'POST', credentials: 'include', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ challengeToken, code }),
+    });
+  } catch { throw new ApiError({ kind: 'network' }); }
+  const body = await json(res);
+  if (!res.ok) {
+    throw new ApiError({ kind: 'http', status: res.status, message: body?.message, code: body?.code, requestId: body?.requestId });
+  }
+  apply(body as LoginSession);
+  startIdleWatch();
+  return { user: (body as LoginSession).user, recoveryCodes: (body as LoginSession).recoveryCodes || [] };
 }
 
 /** Ends the session. `server` asks the API to revoke the refresh token as well. */

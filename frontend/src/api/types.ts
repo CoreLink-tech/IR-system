@@ -8,8 +8,8 @@ export type { ExecutiveSummary, IncidentReport, SecuritySummary, TechnicalReport
 export type Role = 'SUPER_ADMIN' | 'SECURITY_ADMIN' | 'ANALYST' | 'VIEWER';
 export const ROLE_LIST: Role[] = ['SUPER_ADMIN', 'SECURITY_ADMIN', 'ANALYST', 'VIEWER'];
 
-export interface User { id: string; email: string; name: string | null; role: Role; isActive: boolean; mustChangePassword: boolean }
-export interface UserRow extends User { lastLoginAt: string | null; createdAt: string }
+export interface User { id: string; email: string; name: string | null; role: Role; isActive: boolean; mustChangePassword: boolean; twoFactorEnabled?: boolean }
+export interface UserRow extends User { lastLoginAt: string | null; createdAt: string; lockedUntil?: string | null; twoFactorEnabled?: boolean }
 export interface Assignee { id: string; email: string; name: string | null }
 export interface AssignableUser extends Assignee { role: Role }
 
@@ -83,5 +83,29 @@ export interface OperationalSettings {
   sessions: { accessTokenLifetime: string; refreshTokenDays: number; secureCookie: boolean };
 }
 
-export interface LoginResult { user: User; accessToken: string; csrfToken?: string; refreshToken?: string }
+export interface LoginSession { user: User; accessToken: string; csrfToken?: string; refreshToken?: string; recoveryCodes?: string[] }
+export interface LoginTwoFactorRequired { twoFactorRequired: true; challengeToken: string; expiresInSeconds: number }
+export interface LoginEnrollmentRequired { twoFactorEnrollmentRequired: true; challengeToken: string; expiresInSeconds: number }
+export type LoginResult = LoginSession | LoginTwoFactorRequired | LoginEnrollmentRequired
+
+export function isLoginSession(r: LoginResult): r is LoginSession {
+  return 'accessToken' in r && 'user' in r;
+}
+export function isTwoFactorRequired(r: LoginResult): r is LoginTwoFactorRequired {
+  return 'twoFactorRequired' in r && !!(r as LoginTwoFactorRequired).twoFactorRequired;
+}
+export function isEnrollmentRequired(r: LoginResult): r is LoginEnrollmentRequired {
+  return 'twoFactorEnrollmentRequired' in r && !!(r as LoginEnrollmentRequired).twoFactorEnrollmentRequired;
+}
+
+export interface TwoFactorStatus {
+  enabled: boolean;
+  required: boolean;
+  recoveryCodesRemaining: number;
+  enrolledAt: string | null;
+}
+export interface SessionRow {
+  id: string; device: string | null; ipAddress: string | null;
+  createdAt: string; lastUsedAt: string | null; expiresAt: string; current?: boolean;
+}
 export interface HealthResult { status: string; service: string; version: string; time: string }

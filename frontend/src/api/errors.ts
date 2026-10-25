@@ -41,7 +41,10 @@ export function describeError(e: unknown): { title: string; body: string; reques
       const known = KNOWN.find(([re]) => e.details.some((d) => re.test(d)));
       return { title: 'That could not be done', body: known ? known[1] : (e.details.join(' ') || 'The request was not accepted.'), requestId: e.requestId };
     }
-    case 401: return { title: 'Please sign in again', body: 'Your session is no longer valid.' };
+    case 401: {
+      if (e.code === 'session_ended') return { title: 'This session has ended', body: 'You were signed out. Sign in again to continue.', requestId: e.requestId };
+      return { title: 'Please sign in again', body: 'Your session is no longer valid.', requestId: e.requestId };
+    }
     case 403: return { title: 'You do not have access to this', body: 'Your role does not allow this action. If you need it, ask a super admin.', requestId: e.requestId };
     case 404: return { title: 'Not found', body: 'That item does not exist, or it was removed.', requestId: e.requestId };
     case 429: return {

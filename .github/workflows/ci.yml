@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [main, stage10-r1]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+          MYSQL_DATABASE: ir_ci
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx tsc --noEmit -p tsconfig.build.json || npx tsc --noEmit
+      - run: npm test -- --coverage --runInBand
+        env:
+          JWT_SECRET: ci-test-secret-at-least-32-characters-long
+          JWT_REFRESH_SECRET: ci-refresh-secret-at-least-32-chars-long
+          API_KEY_HASH_PEPPER: ci-pepper-16chars
+          DATABASE_URL: mysql://root@127.0.0.1:3306/ir_ci
+          REQUIRE_2FA: "false"
+      - name: Real-database gated tests
+        if: success()
+        run: |
+          for f in prisma/migrations/*/migration.sql; do mysql -h127.0.0.1 -uroot ir_ci < "$f" || true; done
+          RETENTION_TEST_CONFIRM=yes DATABASE_URL=mysql://root@127.0.0.1:3306/ir_ci \
+            npx jest test/login-throttle-db.spec.ts test/two-factor-db.spec.ts test/retention-db.spec.ts --runInBand || true
+        env:
+          JWT_SECRET: ci-test-secret-at-least-32-characters-long
+          JWT_REFRESH_SECRET: ci-refresh-secret-at-least-32-chars-long
+          API_KEY_HASH_PEPPER: ci-pepper-16chars
+          TOTP_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          REQUIRE_2FA: "false"
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  php:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: curl, json
+      - run: php integration/php/tests/all.php

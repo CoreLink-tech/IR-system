@@ -46,6 +46,7 @@ function UserMenu() {
         <div className="menu" role="menu" aria-label="Account">
           <p className="small muted" style={{ padding: '.4rem .6rem', margin: 0 }}>{user.email}<br /><span className="badge role-badge">{ROLE_LABEL[user.role]}</span></p>
           <Button role="menuitem" onClick={() => { setOpen(false); nav('/account/password'); }}>Change password</Button>
+          <Button role="menuitem" onClick={() => { setOpen(false); nav('/account/sessions'); }}>Sessions</Button>
           <Button role="menuitem" onClick={async () => { setOpen(false); await signOut('signedOut'); nav('/sign-in', { replace: true }); }}>Sign out</Button>
         </div>
       )}

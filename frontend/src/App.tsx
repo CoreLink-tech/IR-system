@@ -16,6 +16,9 @@ const IpDetailPage = lazy(() => import('@/pages/IpDetail'));
 const BlockingPage = lazy(() => import('@/pages/Blocking'));
 const ReportsPage = lazy(() => import('@/pages/Reports'));
 const ChangePasswordPage = lazy(() => import('@/pages/ChangePassword'));
+const SessionsPage = lazy(() => import('@/pages/Sessions'));
+const TwoFactorVerifyPage = lazy(() => import('@/pages/TwoFactorVerify'));
+const TwoFactorEnrollPage = lazy(() => import('@/pages/TwoFactorEnroll'));
 const AdminUsersPage = lazy(() => import('@/pages/AdminUsers'));
 const AdminApiKeysPage = lazy(() => import('@/pages/AdminApiKeys'));
 const AdminRulesPage = lazy(() => import('@/pages/AdminRules'));
@@ -32,6 +35,8 @@ export default function App() {
       <Suspense fallback={<main><Skeleton lines={5} /></main>}>
         <Routes>
           <Route path="/sign-in" element={<SignInPage />} />
+          <Route path="/sign-in/2fa" element={<TwoFactorVerifyPage />} />
+          <Route path="/sign-in/enroll" element={<TwoFactorEnrollPage />} />
           <Route element={<RequireAuth><Layout /></RequireAuth>}>
             <Route path="/" element={<RequireCap cap="reports.executive"><OverviewPage /></RequireCap>} />
             <Route path="/incidents" element={<RequireCap cap="incidents.read"><IncidentsPage /></RequireCap>} />
@@ -41,6 +46,7 @@ export default function App() {
             <Route path="/blocking" element={<RequireCap cap="blocks.read"><BlockingPage /></RequireCap>} />
             <Route path="/reports" element={<RequireCap cap="reports.executive"><ReportsPage /></RequireCap>} />
             <Route path="/account/password" element={<ChangePasswordPage />} />
+            <Route path="/account/sessions" element={<SessionsPage />} />
             <Route path="/admin/users" element={<RequireCap cap="users.manage"><AdminUsersPage /></RequireCap>} />
             <Route path="/admin/api-keys" element={<RequireCap cap="apikeys.manage"><AdminApiKeysPage /></RequireCap>} />
             <Route path="/admin/rules" element={<RequireCap cap="rules.manage"><AdminRulesPage /></RequireCap>} />
