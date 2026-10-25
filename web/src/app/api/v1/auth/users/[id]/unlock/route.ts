@@ -4,6 +4,8 @@ import { requireUser } from '@/server/auth/require-user';
 import { db } from '@/server/db/client';
 import { loginThrottle, users } from '@/server/db/schema';
 import { sha256 } from '@/server/auth/crypto';
+import { writeAudit } from '@/server/services/audit';
+import { clientIp } from '@/server/api';
 
 export const runtime = 'nodejs';
 
@@ -17,5 +19,16 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!rows[0]) return err(404, 'User not found', { code: 'not_found', requestId: rid });
   const key = sha256(rows[0].email.trim().toLowerCase());
   await db.delete(loginThrottle).where(eq(loginThrottle.keyHash, key));
+  await writeAudit({
+    requestId: rid,
+    actorType: 'USER',
+    actorId: me.id,
+    actorLabel: me.email,
+    action: 'user.unlock',
+    targetType: 'user',
+    targetId: id,
+    metadata: { email: rows[0].email },
+    ipAddress: clientIp(req),
+  });
   return json({ ok: true, email: rows[0].email }, { requestId: rid });
 }

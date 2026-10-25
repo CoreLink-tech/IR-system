@@ -4,6 +4,7 @@ import { requireUser } from '@/server/auth/require-user';
 import { newId } from '@/server/auth/crypto';
 import { db } from '@/server/db/client';
 import { allowlist, ipBlocks } from '@/server/db/schema';
+import { writeAudit } from '@/server/services/audit';
 
 export const runtime = 'nodejs';
 
@@ -69,6 +70,17 @@ export async function POST(req: Request) {
     automatic: false,
     activeKey,
     createdAt: new Date(),
+  });
+  await writeAudit({
+    requestId: rid,
+    actorType: 'USER',
+    actorId: me.id,
+    actorLabel: me.email,
+    action: 'ip.block',
+    targetType: 'ip',
+    targetId: ip,
+    metadata: { reason, permanent },
+    ipAddress: clientIp(req),
   });
   return json(
     {

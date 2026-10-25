@@ -4,6 +4,8 @@ import { requireUser } from '@/server/auth/require-user';
 import { db } from '@/server/db/client';
 import { recoveryCodes, users } from '@/server/db/schema';
 import { revokeAllSessions } from '@/server/auth/session';
+import { writeAudit } from '@/server/services/audit';
+import { clientIp } from '@/server/api';
 
 export const runtime = 'nodejs';
 
@@ -30,5 +32,16 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     .where(eq(users.id, id));
   await revokeAllSessions(id);
   const mustEnrol = rows[0].role === 'SUPER_ADMIN' || rows[0].role === 'SECURITY_ADMIN';
+  await writeAudit({
+    requestId: rid,
+    actorType: 'USER',
+    actorId: me.id,
+    actorLabel: me.email,
+    action: 'twofa.reset',
+    targetType: 'user',
+    targetId: id,
+    metadata: { email: rows[0].email },
+    ipAddress: clientIp(req),
+  });
   return json({ ok: true, email: rows[0].email, mustEnrolAtNextSignIn: mustEnrol }, { requestId: rid });
 }

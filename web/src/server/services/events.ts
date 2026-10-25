@@ -1,6 +1,6 @@
 import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '@/server/db/client';
-import { apiKeys, events, incidents, ipBlocks, allowlist } from '@/server/db/schema';
+import { apiKeys, events, incidents, ipBlocks, allowlist, ipIntelligence } from '@/server/db/schema';
 import { hashApiKey, newId, safeEqual } from '@/server/auth/crypto';
 import { getEnv } from '@/lib/env';
 
@@ -184,8 +184,36 @@ export async function ingestEvent(apiKeyId: string, body: IngestBody) {
     createdAt: new Date(),
   });
 
+
+  // Upsert lightweight IP intelligence
+  if (body.ip_address) {
+    const existing = await db.select().from(ipIntelligence).where(eq(ipIntelligence.ipAddress, body.ip_address)).limit(1);
+    const failed = body.event_type === 'login_failed' ? 1 : 0;
+    if (existing[0]) {
+      await db.update(ipIntelligence).set({
+        lastSeenAt: new Date(),
+        eventCount: existing[0].eventCount + 1,
+        failedLogins: existing[0].failedLogins + failed,
+        riskScore: Math.max(existing[0].riskScore, riskScore),
+        riskLevel: riskLevel,
+      }).where(eq(ipIntelligence.ipAddress, body.ip_address));
+    } else {
+      await db.insert(ipIntelligence).values({
+        id: newId(),
+        ipAddress: body.ip_address,
+        firstSeenAt: new Date(),
+        lastSeenAt: new Date(),
+        eventCount: 1,
+        failedLogins: failed,
+        riskScore,
+        riskLevel,
+      });
+    }
+  }
+
   return { id: eventId, riskScore, riskLevel, incidentId, duplicate: false };
 }
+
 
 export async function listActiveBlocks() {
   const now = new Date();

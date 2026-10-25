@@ -8,10 +8,12 @@ import { api, getAccessToken, setAccessToken, type PublicUser } from '@/lib/clie
 const NAV = [
   { href: '/overview', label: 'Overview' },
   { href: '/incidents', label: 'Incidents' },
+  { href: '/ips', label: 'Addresses' },
   { href: '/blocking', label: 'Blocking' },
   { href: '/allowlist', label: 'Allowlist' },
   { href: '/admin/users', label: 'Users' },
   { href: '/admin/api-keys', label: 'API keys' },
+  { href: '/admin/audit', label: 'Audit' },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -61,6 +63,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <span>{user.email}</span>
             <Link href="/account/password" className="text-blue-700 underline">Password</Link>
             <Link href="/account/sessions" className="text-blue-700 underline">Sessions</Link>
+            <Link href="/account/security" className="text-blue-700 underline">Security</Link>
             <button
               type="button"
               className="text-blue-700 underline"
