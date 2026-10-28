@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, sql } from 'drizzle-orm';
+import { desc, eq, gte } from 'drizzle-orm';
 import { db } from '@/server/db/client';
 import { events, incidents, ipBlocks } from '@/server/db/schema';
 

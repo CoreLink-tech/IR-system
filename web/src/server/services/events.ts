@@ -1,4 +1,4 @@
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '@/server/db/client';
 import { apiKeys, events, incidents, ipBlocks, allowlist, ipIntelligence } from '@/server/db/schema';
 import { hashApiKey, newId, safeEqual } from '@/server/auth/crypto';

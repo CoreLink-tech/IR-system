@@ -1,6 +1,5 @@
 import { cookies } from 'next/headers';
 import { clientIp, err, json, requestId } from '@/server/api';
-import { csrfFor } from '@/server/auth/jwt';
 import { refreshSession } from '@/server/auth/session';
 import { createHash, createHmac, timingSafeEqual } from 'crypto';
 import { getEnv } from '@/lib/env';

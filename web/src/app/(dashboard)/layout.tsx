@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { api, getAccessToken, setAccessToken, type PublicUser } from '@/lib/client-api';
+import { api, setAccessToken, type PublicUser } from '@/lib/client-api';
 
 const NAV = [
   { href: '/overview', label: 'Overview' },

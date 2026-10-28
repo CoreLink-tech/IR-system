@@ -43,6 +43,7 @@ export default function IncidentDetailPage() {
 
   useEffect(() => {
     void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when id changes
   }, [id]);
 
   async function setStatus(status: string) {

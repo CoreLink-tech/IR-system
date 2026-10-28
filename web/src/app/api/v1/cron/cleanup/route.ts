@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, lt, or, sql } from 'drizzle-orm';
+import { and, eq, isNotNull, lt, or } from 'drizzle-orm';
 import { err, json, requestId } from '@/server/api';
 import { db } from '@/server/db/client';
 import { events, loginThrottle, refreshTokens, ipBlocks } from '@/server/db/schema';

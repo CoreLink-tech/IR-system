@@ -3,7 +3,7 @@
  * Own database — not shared with the client website.
  * Client sites push events via API key to /api/v1/events.
  */
-import { sqliteTable, text, integer, real, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 
 const id = () => text('id').primaryKey();

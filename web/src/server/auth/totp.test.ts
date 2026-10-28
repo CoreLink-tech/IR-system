@@ -60,8 +60,6 @@ describe('totp', () => {
 
   it('rejects a wrong code', () => {
     const secret = generateTotpSecret();
-    const r = verifyTotp(secret, '000000', { window: 0 });
-    // May randomly pass; use clearly invalid length instead
     const bad = verifyTotp(secret, '12', { window: 1 });
     expect(bad.ok).toBe(false);
   });

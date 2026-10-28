@@ -1,6 +1,6 @@
 import { SignJWT, jwtVerify } from 'jose';
 import { getEnv } from '@/lib/env';
-import { randomBytes } from 'crypto';
+import { createHash, createHmac, randomBytes } from 'crypto';
 
 export type AccessClaims = {
   sub: string;
@@ -20,10 +20,6 @@ export type ChallengeClaims = {
 function accessKey() {
   return new TextEncoder().encode(getEnv().jwtSecret);
 }
-function refreshKey() {
-  return new TextEncoder().encode(getEnv().jwtRefreshSecret);
-}
-
 export async function signAccess(claims: Omit<AccessClaims, 'typ'>, expiresIn = '15m') {
   return new SignJWT({ ...claims, typ: 'access' })
     .setProtectedHeader({ alg: 'HS256' })
@@ -68,7 +64,6 @@ export function newRefreshToken(): string {
 }
 
 export function csrfFor(refreshToken: string): string {
-  const { createHash, createHmac } = require('crypto') as typeof import('crypto');
   const bound = createHash('sha256').update(refreshToken).digest('hex');
   return createHmac('sha256', getEnv().jwtRefreshSecret).update(`csrf:${bound}`).digest('base64url');
 }

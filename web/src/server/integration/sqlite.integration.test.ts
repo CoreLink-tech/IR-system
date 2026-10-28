@@ -10,7 +10,6 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 import { createClient } from '@libsql/client';
-import { createHash } from 'crypto';
 import { hashSync } from 'bcryptjs';
 
 const tmp = mkdtempSync(join(tmpdir(), 'ir-int-'));
@@ -49,7 +48,6 @@ describe('SQLite integration', () => {
   let updateRule: typeof import('../services/rules').updateRule;
   let apiKeys: typeof import('../db/schema').apiKeys;
   let users: typeof import('../db/schema').users;
-  let eq: typeof import('drizzle-orm').eq;
 
   beforeAll(async () => {
     await applyMigration();
@@ -71,7 +69,6 @@ describe('SQLite integration', () => {
     const schema = await import('../db/schema');
     apiKeys = schema.apiKeys;
     users = schema.users;
-    eq = (await import('drizzle-orm')).eq;
 
     // Seed admin + API key
     const adminId = newId();

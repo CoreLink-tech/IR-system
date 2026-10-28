@@ -1,4 +1,4 @@
-import { desc, eq } from 'drizzle-orm';
+import { desc } from 'drizzle-orm';
 import { err, json, requestId } from '@/server/api';
 import { requireUser } from '@/server/auth/require-user';
 import { generateApiKey, newId } from '@/server/auth/crypto';

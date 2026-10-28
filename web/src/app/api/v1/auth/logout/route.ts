@@ -1,5 +1,5 @@
 import { cookies } from 'next/headers';
-import { err, json, requestId } from '@/server/api';
+import { json, requestId } from '@/server/api';
 import { logoutByRefresh } from '@/server/auth/session';
 
 export const runtime = 'nodejs';
