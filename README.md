@@ -55,3 +55,10 @@ POST /api/v1/auth/login
 ## Legacy Nest + Vite
 
 `backend/` and `frontend/` are the previous stack (reference only). All new work is in `web/`.
+
+## Production launch
+
+Step-by-step env vars, Vercel, Turso, and first-24h checks:
+
+→ [docs/PRODUCTION-LAUNCH.md](./docs/PRODUCTION-LAUNCH.md)
+
