@@ -62,37 +62,11 @@ Do **not** ship placeholder strings (`CHANGE_ME`, `dev-insecure`, etc.). The app
 
 ## 3. Vercel project settings
 
-1. Import **https://github.com/CoreLink-tech/IR-system**
-2. **Root Directory:** `web`
-3. Framework: Next.js (auto)
-4. Region: match `vercel.json` (default `iad1`) or change both deliberately
-5. Environment variables (Production + Preview as needed):
+Root `vercel.json` deploys a **single** service named `web` (directory `web/`, Next.js). Legacy `backend/` and `frontend/` are not services and receive no traffic. No inter-service bindings.
 
-```
-DATABASE_URL=
-DATABASE_AUTH_TOKEN=
-JWT_SECRET=
-JWT_REFRESH_SECRET=
-API_KEY_HASH_PEPPER=
-API_KEY_PREFIX=IRS_
-REQUIRE_2FA=true
-TOTP_ISSUER=Security Dashboard
-CRON_SECRET=
-BOOTSTRAP_ADMIN_EMAIL=you@yourcompany.com
-# Prefer unset BOOTSTRAP_ADMIN_PASSWORD in prod; generate at seed time
-```
+**Option A — multi-service file at repo root (already in repo):** import the whole repo; Vercel uses root `vercel.json`.
 
-6. Deploy once so the project URL exists (e.g. `https://ir-system-xxx.vercel.app`).
-
-Cron (already in `web/vercel.json`):
-
-- Path: `/api/v1/cron/cleanup`
-- Schedule: `15 3 * * *` (03:15 UTC daily)
-- Caller must send `Authorization: Bearer $CRON_SECRET`
-
-Confirm in Vercel → Settings → Cron Jobs that the job is registered after deploy.
-
----
+**Option B — classic:** set **Root Directory** to `web` and ignore multi-service; use `web/` alone.
 
 ## 4. Migrate and seed
 
