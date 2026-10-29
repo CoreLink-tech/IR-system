@@ -12,6 +12,13 @@ function required(name: string, min = 16): string {
 }
 
 export function getEnv() {
+  // Explicit REQUIRE_2FA=false disables it even in production.
+  // Only force 2FA when the variable is unset or set to "true".
+  const require2faEnv = process.env.REQUIRE_2FA?.toLowerCase().trim();
+  const require2fa =
+    require2faEnv === 'true' ||
+    (require2faEnv !== 'false' && process.env.NODE_ENV === 'production');
+
   return {
     databaseUrl: process.env.DATABASE_URL || 'file:./data/ir.db',
     databaseAuthToken: process.env.DATABASE_AUTH_TOKEN || '',
@@ -20,7 +27,7 @@ export function getEnv() {
     apiKeyPepper: required('API_KEY_HASH_PEPPER', 16),
     apiKeyPrefix: process.env.API_KEY_PREFIX || 'IRS_',
     totpEncryptionKey: process.env.TOTP_ENCRYPTION_KEY || '',
-    require2fa: process.env.REQUIRE_2FA === 'true' || process.env.NODE_ENV === 'production',
+    require2fa,
     totpIssuer: process.env.TOTP_ISSUER || 'Security Dashboard',
     nodeEnv: process.env.NODE_ENV || 'development',
   };
