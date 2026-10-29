@@ -13,7 +13,7 @@ type UserRow = {
   lastLoginAt: string | null;
 };
 
-const roles = ['SUPER_ADMIN', 'SECURITY_ADMIN', 'ANALYST', 'VIEWER'] as const;
+const roles = ['SUPER_ADMIN', 'VIEWER'] as const;
 
 export default function AdminUsersPage() {
   const [rows, setRows] = useState<UserRow[]>([]);
