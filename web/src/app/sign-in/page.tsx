@@ -54,26 +54,25 @@ export default function SignInPage() {
   }
 
   return (
-    <div className="flex min-h-screen">
-      {/* Left panel - branding */}
-      <div className="hidden w-[42%] flex-col justify-between bg-[var(--bg-sidebar)] p-10 lg:flex">
-        <div>
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-md bg-[var(--accent)] text-sm font-bold text-[var(--text-inverse)]">
-              W
-            </div>
-            <div>
-              <div className="text-base font-semibold tracking-tight">Watcher, by ZenLink</div>
-              <div className="text-xs text-[var(--text-muted)]">Security Operations Platform</div>
-            </div>
+    <div className="flex min-h-screen bg-[#f3f5f4]">
+      {/* Left brand panel */}
+      <div className="hidden w-[42%] flex-col justify-between bg-[#fcfdfc] border-r border-[#e0e7e3] p-10 lg:flex">
+        <div className="flex items-center gap-3">
+          <svg className="h-10 w-9 text-[#176b52]" viewBox="0 0 40 44" fill="none">
+            <path d="M20 2L36 8V21C36 31 29 37 20 42C11 37 4 31 4 21V8L20 2Z" stroke="currentColor" strokeWidth="2.4"/>
+            <path d="M11 14V29H15V21L20 27L25 21V29H29V14H25L20 21L15 14H11Z" fill="currentColor"/>
+          </svg>
+          <div>
+            <div className="text-[20px] font-[760] tracking-[-0.8px]">Watcher</div>
+            <div className="text-[10px] text-[#718079]">by ZenLink Technologies</div>
           </div>
         </div>
 
-        <div className="space-y-6">
-          <h1 className="text-2xl font-semibold leading-tight tracking-tight">
+        <div className="space-y-5">
+          <h1 className="text-[28px] font-[750] leading-tight tracking-[-0.9px] text-[#172923]">
             Monitor. Investigate.<br />Respond.
           </h1>
-          <p className="max-w-sm text-sm leading-relaxed text-[var(--text-secondary)]">
+          <p className="max-w-sm text-[13px] leading-relaxed text-[#718079]">
             Centralized incident response and threat monitoring for your applications.
             Detect suspicious activity, manage enforcement, and maintain operational awareness.
           </p>
@@ -84,38 +83,36 @@ export default function SignInPage() {
               { label: 'IP Intelligence', desc: 'Risk-based decisions' },
               { label: 'Enforcement', desc: 'Block & allow controls' },
             ].map((item) => (
-              <div key={item.label} className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-surface)] p-3">
-                <div className="text-xs font-medium">{item.label}</div>
-                <div className="mt-0.5 text-[11px] text-[var(--text-muted)]">{item.desc}</div>
+              <div key={item.label} className="rounded-[6px] border border-[#e0e7e3] bg-white p-3">
+                <div className="text-[11px] font-bold text-[#172923]">{item.label}</div>
+                <div className="mt-0.5 text-[10px] text-[#718079]">{item.desc}</div>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="text-[11px] text-[var(--text-muted)]">
-          Authorized personnel only
-        </div>
+        <div className="text-[10px] text-[#8a9690]">Authorized personnel only</div>
       </div>
 
-      {/* Right panel - form */}
+      {/* Form */}
       <div className="flex flex-1 flex-col items-center justify-center px-6 py-12">
         <div className="w-full max-w-[360px]">
-          {/* Mobile brand */}
           <div className="mb-8 flex items-center gap-2.5 lg:hidden">
-            <div className="flex h-8 w-8 items-center justify-center rounded bg-[var(--accent)] text-xs font-bold text-[var(--text-inverse)]">
-              W
-            </div>
-            <span className="text-sm font-semibold">Watcher, by ZenLink</span>
+            <svg className="h-8 w-7 text-[#176b52]" viewBox="0 0 40 44" fill="none">
+              <path d="M20 2L36 8V21C36 31 29 37 20 42C11 37 4 31 4 21V8L20 2Z" stroke="currentColor" strokeWidth="2.4"/>
+              <path d="M11 14V29H15V21L20 27L25 21V29H29V14H25L20 21L15 14H11Z" fill="currentColor"/>
+            </svg>
+            <span className="text-[16px] font-[760]">Watcher</span>
           </div>
 
-          <h2 className="text-xl font-semibold tracking-tight">Sign in</h2>
-          <p className="mt-1.5 text-sm text-[var(--text-secondary)]">
+          <h2 className="text-[22px] font-[750] tracking-[-0.5px]">Sign in</h2>
+          <p className="mt-1.5 text-[13px] text-[#718079]">
             Enter your credentials to access the security console.
           </p>
 
           <form onSubmit={onSubmit} className="mt-8 space-y-4">
             <div>
-              <label htmlFor="email" className="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]">
+              <label htmlFor="email" className="mb-1.5 block text-[11px] font-semibold text-[#5f6f67]">
                 Email
               </label>
               <input
@@ -132,7 +129,7 @@ export default function SignInPage() {
             </div>
 
             <div>
-              <label htmlFor="password" className="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]">
+              <label htmlFor="password" className="mb-1.5 block text-[11px] font-semibold text-[#5f6f67]">
                 Password
               </label>
               <div className="relative">
@@ -148,42 +145,27 @@ export default function SignInPage() {
                 />
                 <button
                   type="button"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-[#7b8881] hover:text-[#172923]"
                   onClick={() => setShowPassword((v) => !v)}
                   tabIndex={-1}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
-                  {showPassword ? (
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-                      <line x1="1" y1="1" x2="23" y2="23" />
-                    </svg>
-                  ) : (
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                      <circle cx="12" cy="12" r="3" />
-                    </svg>
-                  )}
+                  {showPassword ? 'Hide' : 'Show'}
                 </button>
               </div>
             </div>
 
             {message && (
-              <div className="rounded-[var(--radius)] border border-[var(--critical)]/30 bg-[var(--critical-muted)] px-3 py-2 text-sm text-[var(--critical)]" role="alert">
+              <div className="rounded-[5px] border border-[#b64040]/30 bg-[#faeeee] px-3 py-2 text-[12px] text-[#a13a3a]" role="alert">
                 {message}
               </div>
             )}
 
-            <button
-              type="submit"
-              disabled={busy || !email || !password}
-              className="btn btn-primary w-full py-2.5"
-            >
+            <button type="submit" disabled={busy || !email || !password} className="btn btn-primary w-full py-2.5 text-[12px]">
               {busy ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
 
-          <p className="mt-8 text-center text-[11px] text-[var(--text-muted)]">
+          <p className="mt-8 text-center text-[10px] text-[#8a9690]">
             Access restricted to authorized security personnel
           </p>
         </div>

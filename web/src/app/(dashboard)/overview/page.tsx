@@ -11,6 +11,7 @@ type Incident = {
   title: string;
   status: string;
   severity: string;
+  sourceIp?: string | null;
   createdAt?: string | number;
   updatedAt?: string | number;
 };
@@ -20,26 +21,23 @@ type EventRow = {
   severity: string;
   ipAddress?: string | null;
   riskScore?: number;
-  riskLevel?: string;
   createdAt?: string | number;
 };
 
-function severityBadge(sev: string) {
+function severityClass(sev: string) {
   const s = (sev || '').toUpperCase();
-  if (s === 'CRITICAL') return 'badge badge-critical';
-  if (s === 'HIGH') return 'badge badge-high';
-  if (s === 'MEDIUM') return 'badge badge-medium';
-  if (s === 'LOW') return 'badge badge-low';
-  return 'badge badge-neutral';
+  if (s === 'CRITICAL') return 'sev';
+  if (s === 'HIGH') return 'sev high';
+  if (s === 'MEDIUM') return 'sev medium';
+  return 'sev low';
 }
 
-function statusBadge(status: string) {
+function statusPill(status: string) {
   const s = (status || '').toUpperCase();
   if (s === 'OPEN') return 'badge badge-critical';
   if (s === 'INVESTIGATING') return 'badge badge-high';
   if (s === 'CONTAINED') return 'badge badge-medium';
   if (s === 'RESOLVED') return 'badge badge-low';
-  if (s === 'FALSE_POSITIVE') return 'badge badge-neutral';
   return 'badge badge-neutral';
 }
 
@@ -47,12 +45,7 @@ function formatTime(ts?: string | number | null) {
   if (ts == null) return '—';
   const d = typeof ts === 'number' ? new Date(ts) : new Date(ts);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 export default function OverviewPage() {
@@ -60,33 +53,21 @@ export default function OverviewPage() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [events, setEvents] = useState<EventRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       setLoading(true);
-      setError(null);
       try {
         const [healthRes, incidentsRes, eventsRes] = await Promise.allSettled([
           fetch('/api/v1/health/ready').then((r) => r.json()),
           api<{ data: Incident[] }>('/incidents?pageSize=8'),
           api<{ data: EventRow[] }>('/events?pageSize=10'),
         ]);
-
         if (cancelled) return;
-
         if (healthRes.status === 'fulfilled') setHealth(healthRes.value);
-        else setHealth({ status: 'error' });
-
-        if (incidentsRes.status === 'fulfilled') {
-          setIncidents(incidentsRes.value.data ?? []);
-        }
-        if (eventsRes.status === 'fulfilled') {
-          setEvents(eventsRes.value.data ?? []);
-        }
-      } catch {
-        if (!cancelled) setError('Failed to load dashboard data');
+        if (incidentsRes.status === 'fulfilled') setIncidents(incidentsRes.value.data ?? []);
+        if (eventsRes.status === 'fulfilled') setEvents(eventsRes.value.data ?? []);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -98,170 +79,201 @@ export default function OverviewPage() {
   const openIncidents = incidents.filter((i) =>
     ['OPEN', 'INVESTIGATING', 'CONTAINED'].includes((i.status || '').toUpperCase()),
   );
-  const criticalCount = incidents.filter((i) =>
-    (i.severity || '').toUpperCase() === 'CRITICAL',
-  ).length;
+  const criticalCount = incidents.filter((i) => (i.severity || '').toUpperCase() === 'CRITICAL').length;
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <div>
+      {/* Page head */}
+      <div className="mb-[23px] flex flex-wrap items-start justify-between gap-5">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Overview</h1>
-          <p className="mt-0.5 text-sm text-[var(--text-secondary)]">
-            Security posture and recent activity
+          <div className="kicker">Security operations</div>
+          <h1 className="m-0 text-[27px] font-[750] leading-[1.15] tracking-[-0.9px]">Overview</h1>
+          <p className="mt-2 text-[13px] text-[#718079]">
+            Security posture and recent activity across your workspace.
           </p>
-        </div>
-        <div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
-          {health?.status === 'ready' ? (
-            <span className="flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-[var(--success)]" />
-              System ready
-              {health.database ? ` · ${health.database}` : ''}
+          <div className="mt-[13px] flex items-center gap-[7px] text-[11px] text-[#5e7066]">
+            <span className={`inline-block h-[7px] w-[7px] rounded-full ${health?.status === 'ready' ? 'bg-[#2d9368]' : 'bg-[#98651f]'}`} />
+            <span>
+              {health?.status === 'ready'
+                ? `System status: operational${health.database ? ` · ${health.database}` : ''}`
+                : `System status: ${health?.status || 'checking…'}`}
             </span>
-          ) : (
-            <span className="flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-[var(--warning)]" />
-              {health?.status || 'Checking…'}
-            </span>
-          )}
+          </div>
         </div>
       </div>
 
-      {error && (
-        <div className="rounded-[var(--radius)] border border-[var(--critical)]/30 bg-[var(--critical-muted)] px-4 py-3 text-sm text-[var(--critical)]">
-          {error}
-        </div>
-      )}
-
-      {/* Metric cards */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Metrics */}
+      <div className="mb-[18px] grid grid-cols-2 gap-[13px] lg:grid-cols-4">
         {[
           {
-            label: 'Open Incidents',
-            value: loading ? '—' : openIncidents.length,
-            sub: criticalCount > 0 ? `${criticalCount} critical` : 'Active cases',
-            href: '/incidents',
+            label: 'Open incidents',
+            value: loading ? '—' : String(openIncidents.length),
+            foot: criticalCount > 0 ? <><strong>{criticalCount} critical</strong> · need attention</> : 'Active cases',
           },
           {
-            label: 'Recent Events',
-            value: loading ? '—' : events.length,
-            sub: 'Latest sample',
-            href: '/ips',
+            label: 'Recent events',
+            value: loading ? '—' : String(events.length),
+            foot: 'Latest sample from API',
           },
           {
-            label: 'Critical Severity',
-            value: loading ? '—' : criticalCount,
-            sub: 'Across incidents',
-            href: '/incidents',
+            label: 'Critical severity',
+            value: loading ? '—' : String(criticalCount).padStart(2, '0'),
+            foot: 'Across current incidents',
           },
           {
-            label: 'API Status',
+            label: 'API status',
             value: health?.status === 'ready' ? 'Ready' : health?.status || '…',
-            sub: health?.database || 'Database',
-            href: null,
+            foot: health?.database || 'Database connection',
+            valueClass: 'text-[23px]',
           },
         ].map((m) => (
-          <div key={m.label} className="surface p-4">
-            <div className="text-xs font-medium text-[var(--text-secondary)]">{m.label}</div>
-            <div className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">
-              {m.value}
-            </div>
-            <div className="mt-1 flex items-center justify-between">
-              <span className="text-[11px] text-[var(--text-muted)]">{m.sub}</span>
-              {m.href && (
-                <Link href={m.href} className="text-[11px] text-[var(--accent)] hover:underline">
-                  View →
-                </Link>
-              )}
-            </div>
+          <div key={m.label} className="metric">
+            <div className="metric-label">{m.label}</div>
+            <div className={`metric-value ${m.valueClass || ''}`}>{m.value}</div>
+            <div className="metric-foot">{m.foot}</div>
           </div>
         ))}
       </div>
 
+      {/* Incidents table */}
+      <section className="mb-4 surface">
+        <div className="flex items-center justify-between gap-3 border-b border-[#eaf0ec] px-[17px] py-[15px]">
+          <div>
+            <div className="text-[12px] font-[750]">Recent incidents</div>
+            <div className="mt-1 text-[10px] text-[#718079]">Latest incidents recorded by Watcher</div>
+          </div>
+          <Link href="/incidents" className="text-[10px] font-[750] text-[#176b52] hover:underline">
+            All incidents
+          </Link>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Incident</th>
+                <th>Severity</th>
+                <th>Status</th>
+                <th>Source IP</th>
+                <th>Updated</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading && (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-[#718079]">Loading…</td>
+                </tr>
+              )}
+              {!loading && incidents.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-[#718079]">
+                    No incidents yet. Events from client sites will create incidents when rules match.
+                  </td>
+                </tr>
+              )}
+              {incidents.slice(0, 6).map((inc) => (
+                <tr key={inc.id}>
+                  <td>
+                    <strong>#{inc.publicNumber}</strong>
+                    &nbsp;&nbsp;{inc.title}
+                  </td>
+                  <td>
+                    <span className={severityClass(inc.severity)}>{inc.severity}</span>
+                  </td>
+                  <td>
+                    <span className={statusPill(inc.status)}>{inc.status}</span>
+                  </td>
+                  <td className="mono">{inc.sourceIp || '—'}</td>
+                  <td className="text-[#718079]">{formatTime(inc.updatedAt || inc.createdAt)}</td>
+                  <td>
+                    <Link href={`/incidents/${inc.id}`} className="text-[10px] font-[750] text-[#176b52] hover:underline">
+                      Details
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* Events + Quick actions */}
       <div className="grid gap-4 lg:grid-cols-2">
-        {/* Recent incidents */}
-        <div className="surface">
-          <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
-            <h2 className="text-sm font-semibold">Recent Incidents</h2>
-            <Link href="/incidents" className="text-xs text-[var(--accent)] hover:underline">
-              View all
+        <section className="surface">
+          <div className="flex items-center justify-between border-b border-[#eaf0ec] px-[17px] py-[15px]">
+            <div>
+              <div className="text-[12px] font-[750]">Recent event stream</div>
+              <div className="mt-1 text-[10px] text-[#718079]">Latest activity across the system</div>
+            </div>
+            <Link href="/ips" className="text-[10px] font-[750] text-[#176b52] hover:underline">
+              Inspect events
             </Link>
           </div>
-          {loading ? (
-            <div className="p-6 text-center text-sm text-[var(--text-muted)]">Loading…</div>
-          ) : incidents.length === 0 ? (
-            <div className="p-6 text-center text-sm text-[var(--text-muted)]">
-              No incidents yet
-            </div>
-          ) : (
-            <div className="divide-y divide-[var(--border-subtle)]">
-              {incidents.slice(0, 6).map((inc) => (
-                <Link
-                  key={inc.id}
-                  href={`/incidents/${inc.id}`}
-                  className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-[var(--bg-hover)]"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium">
-                      #{inc.publicNumber} {inc.title}
-                    </div>
-                    <div className="mt-0.5 text-[11px] text-[var(--text-muted)]">
-                      {formatTime(inc.createdAt || inc.updatedAt)}
-                    </div>
-                  </div>
-                  <span className={severityBadge(inc.severity)}>{inc.severity}</span>
-                  <span className={statusBadge(inc.status)}>{inc.status}</span>
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Recent events */}
-        <div className="surface">
-          <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
-            <h2 className="text-sm font-semibold">Recent Events</h2>
+          <div className="px-[17px] py-1">
+            {loading && <div className="py-6 text-center text-sm text-[#718079]">Loading…</div>}
+            {!loading && events.length === 0 && (
+              <div className="py-6 text-center text-sm text-[#718079]">No events ingested yet</div>
+            )}
+            {events.slice(0, 6).map((ev) => (
+              <div
+                key={ev.id}
+                className="grid grid-cols-[28px_1fr_auto] items-start gap-[10px] border-b border-[#edf1ee] py-[13px] last:border-0"
+              >
+                <div className="grid h-[27px] w-[27px] place-items-center rounded-[4px] border border-[#e0e7e3] text-[#176b52]">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+                    <path d="M12 3L21 20H3Z" />
+                  </svg>
+                </div>
+                <div>
+                  <strong className="text-[11px] font-bold">{ev.eventType}</strong>
+                  <small className="mt-1 block text-[10px] text-[#718079]">
+                    {ev.ipAddress || '—'} · {ev.severity}
+                    {ev.riskScore != null ? ` · risk ${ev.riskScore}` : ''}
+                  </small>
+                </div>
+                <time className="whitespace-nowrap text-[9px] text-[#8a9690]">
+                  {formatTime(ev.createdAt)}
+                </time>
+              </div>
+            ))}
           </div>
-          {loading ? (
-            <div className="p-6 text-center text-sm text-[var(--text-muted)]">Loading…</div>
-          ) : events.length === 0 ? (
-            <div className="p-6 text-center text-sm text-[var(--text-muted)]">
-              No events ingested yet
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Type</th>
-                    <th>IP</th>
-                    <th>Severity</th>
-                    <th>Risk</th>
-                    <th>Time</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {events.slice(0, 8).map((ev) => (
-                    <tr key={ev.id}>
-                      <td className="font-medium">{ev.eventType}</td>
-                      <td className="mono text-xs">{ev.ipAddress || '—'}</td>
-                      <td>
-                        <span className={severityBadge(ev.severity)}>{ev.severity}</span>
-                      </td>
-                      <td className="tabular-nums text-xs">
-                        {ev.riskScore != null ? ev.riskScore : '—'}
-                      </td>
-                      <td className="text-xs text-[var(--text-muted)]">
-                        {formatTime(ev.createdAt)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+        </section>
+
+        <section className="surface">
+          <div className="border-b border-[#eaf0ec] px-[17px] py-[15px]">
+            <div className="text-[12px] font-[750]">Quick actions</div>
+            <div className="mt-1 text-[10px] text-[#718079]">Common administration tasks</div>
+          </div>
+          <div className="px-[17px]">
+            {[
+              { href: '/blocking', title: 'Manage blocklist', desc: 'Review blocked IP addresses', icon: 'block' },
+              { href: '/allowlist', title: 'Manage allowlist', desc: 'Maintain trusted sources', icon: 'check' },
+              { href: '/admin/api-keys', title: 'API keys', desc: 'Review integration credentials', icon: 'key' },
+              { href: '/admin/rules', title: 'Detection rules', desc: 'Review active controls', icon: 'rules' },
+            ].map((a) => (
+              <Link
+                key={a.href}
+                href={a.href}
+                className="flex w-full items-center gap-[11px] border-b border-[#edf1ee] py-[13px] text-left last:border-0 hover:bg-[#fafcfb]"
+              >
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#176b52" strokeWidth="1.7">
+                  {a.icon === 'block' && (<><circle cx="12" cy="12" r="9"/><path d="M6 6L18 18"/></>)}
+                  {a.icon === 'check' && <path d="M5 12L10 17L20 6"/>}
+                  {a.icon === 'key' && (<><circle cx="8" cy="15" r="5"/><path d="M12 11L21 2"/></>)}
+                  {a.icon === 'rules' && <path d="M4 7H20M4 12H20M4 17H20"/>}
+                </svg>
+                <span>
+                  <strong className="block text-[11px]">{a.title}</strong>
+                  <small className="mt-[3px] block text-[10px] text-[#718079]">{a.desc}</small>
+                </span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      </div>
+
+      <div className="mt-[18px] text-[9px] text-[#8a9690]">
+        Watcher by ZenLink Technologies
       </div>
     </div>
   );
