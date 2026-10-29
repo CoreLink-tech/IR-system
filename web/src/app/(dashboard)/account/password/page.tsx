@@ -35,7 +35,7 @@ export default function ChangePasswordPage() {
   return (
     <div className="mx-auto max-w-md space-y-4">
       <h1 className="text-2xl font-semibold">Change password</h1>
-      <p className="text-sm text-neutral-600">At least 12 characters, with upper, lower, and a digit. All sessions will end.</p>
+      <p className="text-sm text-neutral-600">At least 6 characters, with upper, lower, and a digit. All sessions will end.</p>
       {ok && <p className="text-green-700">Password changed. Sign in again.</p>}
       <form onSubmit={onSubmit} className="space-y-3 rounded-lg border bg-white p-4">
         <label className="block text-sm">

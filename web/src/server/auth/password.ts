@@ -5,8 +5,8 @@ import { users } from '@/server/db/schema';
 import { revokeAllSessions } from '@/server/auth/session';
 
 export function assertStrongPassword(password: string) {
-  if (!password || password.length < 12) {
-    throw Object.assign(new Error('Password must be at least 12 characters'), {
+  if (!password || password.length < 6) {
+    throw Object.assign(new Error('Password must be at least 6 characters'), {
       status: 400,
       code: 'weak_password',
     });

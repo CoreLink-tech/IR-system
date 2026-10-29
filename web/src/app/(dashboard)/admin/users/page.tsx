@@ -206,7 +206,7 @@ export default function AdminUsersPage() {
                     {showPassword ? 'Hide' : 'Show'}
                   </button>
                 </div>
-                <span className="block text-xs text-[var(--text-muted)]">At least 12 characters, with uppercase, lowercase, and a number.</span>
+                <span className="block text-xs text-[var(--text-muted)]">At least 6 characters, with uppercase, lowercase, and a number.</span>
               </label>
               <label className="block space-y-1.5 text-sm">
                 <span className="text-[var(--text-secondary)]">Role</span>
