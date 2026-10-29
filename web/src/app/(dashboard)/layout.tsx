@@ -99,10 +99,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Brand */}
         <div className="flex h-14 items-center gap-2.5 border-b border-[var(--border)] px-4">
           <div className="flex h-7 w-7 items-center justify-center rounded bg-[var(--accent)] text-xs font-bold text-[var(--text-inverse)]">
-            IR
+            W
           </div>
           <div>
-            <div className="text-sm font-semibold tracking-tight">IR-System</div>
+            <div className="text-sm font-semibold tracking-tight">Watcher, by ZenLink</div>
             <div className="text-[10px] text-[var(--text-muted)]">Security Operations</div>
           </div>
         </div>

@@ -60,10 +60,10 @@ export default function SignInPage() {
         <div>
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-md bg-[var(--accent)] text-sm font-bold text-[var(--text-inverse)]">
-              IR
+              W
             </div>
             <div>
-              <div className="text-base font-semibold tracking-tight">IR-System</div>
+              <div className="text-base font-semibold tracking-tight">Watcher, by ZenLink</div>
               <div className="text-xs text-[var(--text-muted)]">Security Operations Platform</div>
             </div>
           </div>
@@ -103,9 +103,9 @@ export default function SignInPage() {
           {/* Mobile brand */}
           <div className="mb-8 flex items-center gap-2.5 lg:hidden">
             <div className="flex h-8 w-8 items-center justify-center rounded bg-[var(--accent)] text-xs font-bold text-[var(--text-inverse)]">
-              IR
+              W
             </div>
-            <span className="text-sm font-semibold">IR-System</span>
+            <span className="text-sm font-semibold">Watcher, by ZenLink</span>
           </div>
 
           <h2 className="text-xl font-semibold tracking-tight">Sign in</h2>
