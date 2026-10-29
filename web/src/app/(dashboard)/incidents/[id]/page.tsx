@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { api, ApiError } from '@/lib/client-api';
 
@@ -25,9 +25,26 @@ type Ev = { id: string; eventType: string; severity: string; riskScore: number; 
 
 const STATUSES = ['OPEN', 'INVESTIGATING', 'CONTAINED', 'RESOLVED', 'FALSE_POSITIVE'];
 
+function severityBadge(sev: string) {
+  const s = (sev || '').toUpperCase();
+  if (s === 'CRITICAL') return 'badge badge-critical';
+  if (s === 'HIGH') return 'badge badge-high';
+  if (s === 'MEDIUM') return 'badge badge-medium';
+  if (s === 'LOW') return 'badge badge-low';
+  return 'badge badge-neutral';
+}
+
+function statusBadge(status: string) {
+  const s = (status || '').toUpperCase();
+  if (s === 'OPEN') return 'badge badge-critical';
+  if (s === 'INVESTIGATING') return 'badge badge-high';
+  if (s === 'CONTAINED') return 'badge badge-medium';
+  if (s === 'RESOLVED') return 'badge badge-low';
+  return 'badge badge-neutral';
+}
+
 export default function IncidentDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const router = useRouter();
   const [incident, setIncident] = useState<Incident | null>(null);
   const [events, setEvents] = useState<Ev[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +60,6 @@ export default function IncidentDetailPage() {
 
   useEffect(() => {
     void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when id changes
   }, [id]);
 
   async function setStatus(status: string) {
@@ -61,111 +77,141 @@ export default function IncidentDetailPage() {
 
   if (error && !incident) {
     return (
-      <div className="space-y-2">
-        <p className="text-red-600">{error}</p>
-        <Link href="/incidents" className="text-blue-700 underline">Back to incidents</Link>
+      <div className="space-y-3">
+        <div className="rounded-[var(--radius)] border border-[var(--critical)]/30 bg-[var(--critical-muted)] px-4 py-3 text-sm text-[var(--critical)]">
+          {error}
+        </div>
+        <Link href="/incidents" className="text-sm text-[var(--accent)] hover:underline">
+          ← Back to incidents
+        </Link>
       </div>
     );
   }
-  if (!incident) return <p className="text-neutral-500">Loading…</p>;
+
+  if (!incident) {
+    return <div className="py-12 text-center text-sm text-[var(--text-muted)]">Loading…</div>;
+  }
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <Link href="/incidents" className="text-sm text-blue-700 underline">← Incidents</Link>
-          <h1 className="mt-1 text-2xl font-semibold">
+          <Link href="/incidents" className="text-xs text-[var(--text-muted)] hover:text-[var(--accent)]">
+            ← Incidents
+          </Link>
+          <h1 className="mt-1 text-xl font-semibold tracking-tight">
             #{incident.publicNumber} · {incident.title}
           </h1>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <span className={severityBadge(incident.severity)}>{incident.severity}</span>
+            <span className={statusBadge(incident.status)}>{incident.status}</span>
+          </div>
         </div>
+      </div>
+
+      {error && (
+        <div className="rounded-[var(--radius)] border border-[var(--critical)]/30 bg-[var(--critical-muted)] px-4 py-3 text-sm text-[var(--critical)]">
+          {error}
+        </div>
+      )}
+
+      {/* Summary metrics */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {[
+          { label: 'Source IP', value: incident.sourceIp || '—', mono: true },
+          { label: 'Risk Score', value: String(incident.riskScore) },
+          { label: 'Events', value: String(incident.eventCount) },
+          {
+            label: 'Opened',
+            value: new Date(incident.createdAt).toLocaleString(undefined, {
+              month: 'short',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
+          },
+        ].map((m) => (
+          <div key={m.label} className="surface p-4">
+            <div className="text-xs text-[var(--text-secondary)]">{m.label}</div>
+            <div className={`mt-1 text-sm font-medium ${m.mono ? 'mono' : 'tabular-nums'}`}>
+              {m.value}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {incident.summary && (
+        <div className="surface p-4">
+          <div className="text-xs font-medium text-[var(--text-secondary)]">Summary</div>
+          <p className="mt-1 text-sm">{incident.summary}</p>
+        </div>
+      )}
+
+      {/* Status actions */}
+      <div className="surface p-4">
+        <div className="mb-3 text-sm font-medium">Update status</div>
         <div className="flex flex-wrap gap-2">
           {STATUSES.map((s) => (
             <button
               key={s}
               type="button"
               disabled={busy || incident.status === s}
-              className={`rounded px-3 py-1 text-sm ${
-                incident.status === s ? 'bg-blue-600 text-white' : 'border bg-white hover:bg-neutral-50'
-              } disabled:opacity-50`}
+              className={`btn text-xs ${incident.status === s ? 'btn-primary' : 'btn-secondary'}`}
               onClick={() => void setStatus(s)}
             >
-              {s.replace(/_/g, ' ')}
+              {s.replace('_', ' ')}
             </button>
           ))}
         </div>
       </div>
-      {error && <p className="text-red-600">{error}</p>}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card label="Status" value={incident.status} />
-        <Card label="Severity" value={incident.severity} />
-        <Card label="Risk" value={String(incident.riskScore)} />
-        <Card label="Events" value={String(incident.eventCount)} />
-        <Card label="Source IP" value={incident.sourceIp || '—'} mono />
-        <Card label="Opened" value={new Date(incident.createdAt).toLocaleString()} />
-        <Card label="Updated" value={new Date(incident.updatedAt).toLocaleString()} />
-        <Card label="Resolved" value={incident.resolvedAt ? new Date(incident.resolvedAt).toLocaleString() : '—'} />
+
+      {/* Related events */}
+      <div className="surface">
+        <div className="border-b border-[var(--border)] px-4 py-3">
+          <h2 className="text-sm font-semibold">Related Events</h2>
+        </div>
+        {events.length === 0 ? (
+          <div className="p-6 text-center text-sm text-[var(--text-muted)]">No events linked</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Type</th>
+                  <th>Severity</th>
+                  <th>Risk</th>
+                  <th>Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {events.map((e) => (
+                  <tr key={e.id}>
+                    <td className="font-medium">{e.eventType}</td>
+                    <td>
+                      <span className={severityBadge(e.severity)}>{e.severity}</span>
+                    </td>
+                    <td className="tabular-nums">{e.riskScore}</td>
+                    <td className="text-xs text-[var(--text-muted)]">
+                      {new Date(e.createdAt).toLocaleString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
+
       {incident.sourceIp && (
-        <div className="flex gap-3 text-sm">
-          <button
-            type="button"
-            className="rounded bg-red-600 px-3 py-1.5 text-white"
-            onClick={async () => {
-              if (!window.confirm(`Block ${incident.sourceIp}?`)) return;
-              try {
-                await api('/security/block', {
-                  method: 'POST',
-                  json: { ipAddress: incident.sourceIp, reason: `Incident #${incident.publicNumber}` },
-                });
-                router.push('/blocking');
-              } catch (e: unknown) {
-                setError(e instanceof ApiError ? e.message : 'Block failed');
-              }
-            }}
+        <div>
+          <Link
+            href={`/ips/${encodeURIComponent(incident.sourceIp)}`}
+            className="text-sm text-[var(--accent)] hover:underline"
           >
-            Block source IP
-          </button>
+            Investigate source IP {incident.sourceIp} →
+          </Link>
         </div>
       )}
-      <div>
-        <h2 className="mb-2 text-lg font-medium">Related events</h2>
-        <div className="overflow-x-auto rounded-lg border bg-white">
-          <table className="min-w-full text-left text-sm">
-            <thead className="border-b bg-neutral-50 text-neutral-600">
-              <tr>
-                <th className="px-3 py-2">Type</th>
-                <th className="px-3 py-2">Severity</th>
-                <th className="px-3 py-2">Risk</th>
-                <th className="px-3 py-2">When</th>
-              </tr>
-            </thead>
-            <tbody>
-              {events.map((e) => (
-                <tr key={e.id} className="border-b last:border-0">
-                  <td className="px-3 py-2">{e.eventType}</td>
-                  <td className="px-3 py-2">{e.severity}</td>
-                  <td className="px-3 py-2">{e.riskScore}</td>
-                  <td className="px-3 py-2 text-neutral-500">{new Date(e.createdAt).toLocaleString()}</td>
-                </tr>
-              ))}
-              {events.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="px-3 py-4 text-center text-neutral-500">No events linked.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Card({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="rounded-lg border bg-white p-3 shadow-sm">
-      <div className="text-xs text-neutral-500">{label}</div>
-      <div className={`mt-1 ${mono ? 'font-mono text-sm' : 'font-medium'}`}>{value}</div>
     </div>
   );
 }

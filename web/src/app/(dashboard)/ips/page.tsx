@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { api, ApiError } from '@/lib/client-api';
 
@@ -14,56 +14,140 @@ type Row = {
   country: string | null;
 };
 
+function riskBadge(level: string) {
+  const s = (level || '').toUpperCase();
+  if (s === 'CRITICAL') return 'badge badge-critical';
+  if (s === 'HIGH') return 'badge badge-high';
+  if (s === 'MEDIUM' || s === 'SUSPICIOUS') return 'badge badge-medium';
+  if (s === 'LOW') return 'badge badge-low';
+  return 'badge badge-neutral';
+}
+
 export default function IpsPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [levelFilter, setLevelFilter] = useState('ALL');
 
   useEffect(() => {
+    setLoading(true);
     api<{ data: Row[] }>('/ips')
       .then((r) => setRows(r.data || []))
-      .catch((e: unknown) => setError(e instanceof ApiError ? e.message : 'Failed'));
+      .catch((e: unknown) => setError(e instanceof ApiError ? e.message : 'Failed'))
+      .finally(() => setLoading(false));
   }, []);
+
+  const filtered = useMemo(() => {
+    return rows.filter((r) => {
+      if (levelFilter !== 'ALL' && (r.riskLevel || '').toUpperCase() !== levelFilter) return false;
+      if (search) {
+        const q = search.toLowerCase();
+        if (!(r.ipAddress || '').toLowerCase().includes(q) && !(r.country || '').toLowerCase().includes(q)) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [rows, search, levelFilter]);
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">Addresses</h1>
-      {error && <p className="text-red-600">{error}</p>}
-      <div className="overflow-x-auto rounded-lg border bg-white">
-        <table className="min-w-full text-left text-sm">
-          <thead className="border-b bg-neutral-50 text-neutral-600">
+      <div>
+        <h1 className="text-xl font-semibold tracking-tight">IP Intelligence</h1>
+        <p className="mt-0.5 text-sm text-[var(--text-secondary)]">
+          Observed addresses, risk scores, and activity
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          className="input max-w-[220px] mono"
+          placeholder="Search IP or country"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <select
+          className="input max-w-[150px]"
+          value={levelFilter}
+          onChange={(e) => setLevelFilter(e.target.value)}
+        >
+          <option value="ALL">All risk levels</option>
+          <option value="CRITICAL">Critical</option>
+          <option value="HIGH">High</option>
+          <option value="MEDIUM">Medium</option>
+          <option value="SUSPICIOUS">Suspicious</option>
+          <option value="LOW">Low</option>
+          <option value="NORMAL">Normal</option>
+        </select>
+        <span className="text-xs text-[var(--text-muted)]">
+          {filtered.length} of {rows.length}
+        </span>
+      </div>
+
+      {error && (
+        <div className="rounded-[var(--radius)] border border-[var(--critical)]/30 bg-[var(--critical-muted)] px-4 py-3 text-sm text-[var(--critical)]">
+          {error}
+        </div>
+      )}
+
+      <div className="table-container">
+        <table className="data-table">
+          <thead>
             <tr>
-              <th className="px-3 py-2">IP</th>
-              <th className="px-3 py-2">Risk</th>
-              <th className="px-3 py-2">Level</th>
-              <th className="px-3 py-2">Events</th>
-              <th className="px-3 py-2">Failed logins</th>
-              <th className="px-3 py-2">Last seen</th>
+              <th>IP Address</th>
+              <th>Risk Score</th>
+              <th>Level</th>
+              <th>Events</th>
+              <th>Failed Logins</th>
+              <th>Country</th>
+              <th>Last Seen</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
-              <tr key={r.ipAddress} className="border-b last:border-0">
-                <td className="px-3 py-2">
-                  <Link className="font-mono text-xs text-blue-700 underline" href={`/ips/${encodeURIComponent(r.ipAddress)}`}>
-                    {r.ipAddress}
-                  </Link>
-                </td>
-                <td className="px-3 py-2">{r.riskScore}</td>
-                <td className="px-3 py-2">{r.riskLevel}</td>
-                <td className="px-3 py-2">{r.eventCount}</td>
-                <td className="px-3 py-2">{r.failedLogins}</td>
-                <td className="px-3 py-2 text-neutral-500">
-                  {r.lastSeenAt ? new Date(r.lastSeenAt).toLocaleString() : '—'}
-                </td>
-              </tr>
-            ))}
-            {rows.length === 0 && !error && (
+            {loading && (
               <tr>
-                <td colSpan={6} className="px-3 py-6 text-center text-neutral-500">
-                  No addresses yet. They appear when clients send events.
+                <td colSpan={7} className="py-8 text-center text-[var(--text-muted)]">Loading…</td>
+              </tr>
+            )}
+            {!loading && filtered.length === 0 && (
+              <tr>
+                <td colSpan={7} className="py-8 text-center text-[var(--text-muted)]">
+                  {rows.length === 0
+                    ? 'No addresses yet. They appear when clients send events.'
+                    : 'No addresses match the current filters.'}
                 </td>
               </tr>
             )}
+            {filtered.map((r) => (
+              <tr key={r.ipAddress}>
+                <td>
+                  <Link
+                    href={`/ips/${encodeURIComponent(r.ipAddress)}`}
+                    className="mono text-sm font-medium text-[var(--accent)] hover:underline"
+                  >
+                    {r.ipAddress}
+                  </Link>
+                </td>
+                <td className="tabular-nums font-medium">{r.riskScore}</td>
+                <td>
+                  <span className={riskBadge(r.riskLevel)}>{r.riskLevel}</span>
+                </td>
+                <td className="tabular-nums">{r.eventCount}</td>
+                <td className="tabular-nums">{r.failedLogins}</td>
+                <td className="text-xs text-[var(--text-secondary)]">{r.country || '—'}</td>
+                <td className="text-xs text-[var(--text-muted)]">
+                  {r.lastSeenAt
+                    ? new Date(r.lastSeenAt).toLocaleString(undefined, {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                    : '—'}
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>

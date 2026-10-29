@@ -18,6 +18,7 @@ export default function AdminUsersPage() {
   const [meId, setMeId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const load = () =>
     Promise.all([
@@ -31,7 +32,8 @@ export default function AdminUsersPage() {
       .catch((e: unknown) => setError(e instanceof ApiError ? e.message : 'Failed to load'));
 
   useEffect(() => {
-    void load();
+    setLoading(true);
+    void load().finally(() => setLoading(false));
   }, []);
 
   async function unlock(id: string, email: string) {
@@ -66,49 +68,91 @@ export default function AdminUsersPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">Users</h1>
-      <p className="text-sm text-neutral-600">
-        Super admin only. You cannot reset your own two-step verification from here.
-      </p>
-      {error && <p className="text-red-600">{error}</p>}
-      {done && <p className="text-green-700">{done}</p>}
-      <div className="overflow-x-auto rounded-lg border bg-white">
-        <table className="min-w-full text-left text-sm">
-          <thead className="border-b bg-neutral-50 text-neutral-600">
+      <div>
+        <h1 className="text-xl font-semibold tracking-tight">Users</h1>
+        <p className="mt-0.5 text-sm text-[var(--text-secondary)]">
+          Super admin only. Manage platform operators and security analysts.
+        </p>
+      </div>
+
+      {error && (
+        <div className="rounded-[var(--radius)] border border-[var(--critical)]/30 bg-[var(--critical-muted)] px-4 py-3 text-sm text-[var(--critical)]">
+          {error}
+        </div>
+      )}
+      {done && (
+        <div className="rounded-[var(--radius)] border border-[var(--success)]/30 bg-[var(--success-muted)] px-4 py-3 text-sm text-[var(--success)]">
+          {done}
+        </div>
+      )}
+
+      <div className="table-container">
+        <table className="data-table">
+          <thead>
             <tr>
-              <th className="px-3 py-2">Account</th>
-              <th className="px-3 py-2">Role</th>
-              <th className="px-3 py-2">Status</th>
-              <th className="px-3 py-2">Two-step</th>
-              <th className="px-3 py-2">Last sign-in</th>
-              <th className="px-3 py-2">Actions</th>
+              <th>Email</th>
+              <th>Name</th>
+              <th>Role</th>
+              <th>Status</th>
+              <th>2FA</th>
+              <th>Last login</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
+            {loading && (
+              <tr>
+                <td colSpan={7} className="py-8 text-center text-[var(--text-muted)]">Loading…</td>
+              </tr>
+            )}
+            {!loading && rows.length === 0 && (
+              <tr>
+                <td colSpan={7} className="py-8 text-center text-[var(--text-muted)]">No users</td>
+              </tr>
+            )}
             {rows.map((u) => (
-              <tr key={u.id} className="border-b last:border-0">
-                <td className="px-3 py-2">
-                  <div className="font-medium">{u.name || u.email}</div>
-                  {u.name && <div className="text-xs text-neutral-500">{u.email}</div>}
-                  {u.id === meId && <span className="text-xs text-blue-700">You</span>}
+              <tr key={u.id}>
+                <td className="font-medium">{u.email}</td>
+                <td className="text-[var(--text-secondary)]">{u.name || '—'}</td>
+                <td>
+                  <span className="badge badge-neutral">{u.role.replace('_', ' ')}</span>
                 </td>
-                <td className="px-3 py-2">{u.role}</td>
-                <td className="px-3 py-2">{u.isActive ? 'Active' : 'Deactivated'}</td>
-                <td className="px-3 py-2">{u.twoFactorEnabled ? 'On' : 'Off'}</td>
-                <td className="px-3 py-2 text-neutral-500">
-                  {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : 'never'}
-                </td>
-                <td className="px-3 py-2">
-                  {u.id !== meId && (
-                    <span className="flex flex-wrap gap-2">
-                      <button type="button" className="text-blue-700 underline" onClick={() => void unlock(u.id, u.email)}>
-                        Unlock
-                      </button>
-                      <button type="button" className="text-red-700 underline" onClick={() => void reset2fa(u.id, u.email)}>
-                        Reset two-step
-                      </button>
-                    </span>
+                <td>
+                  {u.isActive ? (
+                    <span className="badge badge-low">Active</span>
+                  ) : (
+                    <span className="badge badge-critical">Disabled</span>
                   )}
+                </td>
+                <td>
+                  {u.twoFactorEnabled ? (
+                    <span className="badge badge-info">Enabled</span>
+                  ) : (
+                    <span className="badge badge-neutral">Off</span>
+                  )}
+                </td>
+                <td className="text-xs text-[var(--text-muted)]">
+                  {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : 'Never'}
+                </td>
+                <td>
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      className="btn btn-ghost text-xs"
+                      onClick={() => void unlock(u.id, u.email)}
+                    >
+                      Unlock
+                    </button>
+                    {u.id !== meId && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost text-xs"
+                        onClick={() => void reset2fa(u.id, u.email)}
+                      >
+                        Reset 2FA
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
