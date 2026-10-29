@@ -14,7 +14,7 @@ export const runtime = 'nodejs';
 const validRoles = ['SUPER_ADMIN', 'SECURITY_ADMIN', 'ANALYST', 'VIEWER'] as const;
 const createUserSchema = z.object({
   email: z.string().trim().email().max(254),
-  password: z.string().min(12),
+  password: z.string().min(6),
   name: z.string().trim().max(120).optional(),
   role: z.string().optional(),
 });
