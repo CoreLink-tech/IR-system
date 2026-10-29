@@ -60,7 +60,7 @@ export default function SignInPage() {
         <div className="flex items-center gap-3">
           <svg className="h-10 w-9 text-[#176b52]" viewBox="0 0 40 44" fill="none">
             <path d="M20 2L36 8V21C36 31 29 37 20 42C11 37 4 31 4 21V8L20 2Z" stroke="currentColor" strokeWidth="2.4"/>
-            <path d="M11 14V29H15V21L20 27L25 21V29H29V14H25L20 21L15 14H11Z" fill="currentColor"/>
+            <text x="20" y="28" textAnchor="middle" fill="currentColor" fontSize="16" fontWeight="700" fontFamily="system-ui,sans-serif">W</text>
           </svg>
           <div>
             <div className="text-[20px] font-[760] tracking-[-0.8px]">Watcher</div>
@@ -100,7 +100,7 @@ export default function SignInPage() {
           <div className="mb-8 flex items-center gap-2.5 lg:hidden">
             <svg className="h-8 w-7 text-[#176b52]" viewBox="0 0 40 44" fill="none">
               <path d="M20 2L36 8V21C36 31 29 37 20 42C11 37 4 31 4 21V8L20 2Z" stroke="currentColor" strokeWidth="2.4"/>
-              <path d="M11 14V29H15V21L20 27L25 21V29H29V14H25L20 21L15 14H11Z" fill="currentColor"/>
+              <text x="20" y="28" textAnchor="middle" fill="currentColor" fontSize="16" fontWeight="700" fontFamily="system-ui,sans-serif">W</text>
             </svg>
             <span className="text-[16px] font-[760]">Watcher</span>
           </div>
