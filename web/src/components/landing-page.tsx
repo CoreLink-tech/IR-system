@@ -14,8 +14,8 @@ export default function LandingPage({ hideGetApp }: { hideGetApp: boolean }) {
   return (
     <main className="landing-shell">
       <header className="landing-nav">
-        <Link className="landing-brand" href="/" aria-label="IR-System home">
-          <span className="brand-mark">IR</span><span>IR-System</span>
+        <Link className="landing-brand" href="/" aria-label="Watcher home">
+          <span className="brand-mark">W</span><span>Watcher</span>
         </Link>
         <nav className="landing-nav-links" aria-label="Main navigation">
           <a href="#capabilities">Capabilities</a><Link href="/sign-in">Sign in</Link>
@@ -60,10 +60,10 @@ export default function LandingPage({ hideGetApp }: { hideGetApp: boolean }) {
         <div className="feature-grid">
           <article className="feature-card"><span className="feature-number">01 / INGEST</span><div className="feature-icon">↯</div><h3>Events API</h3><p>Send security events from your e-commerce stack and bring activity into one reliable incident timeline.</p><a href="/sign-in">Explore the dashboard <span>↗</span></a></article>
           <article className="feature-card"><span className="feature-number">02 / CONTAIN</span><div className="feature-icon shield">⌑</div><h3>Blocklist polling</h3><p>Poll managed blocklists to keep known hostile sources out, with controls to review and manage decisions.</p><a href="/sign-in">Manage protection <span>↗</span></a></article>
-          <article className="feature-card"><span className="feature-number">03 / RESPOND</span><div className="feature-icon">⌘</div><h3>Incident dashboard</h3><p>Investigate suspicious IPs, prioritize incidents, and track response status from detection to resolution.</p><a href="/sign-in">Sign in to IR-System <span>↗</span></a></article>
+          <article className="feature-card"><span className="feature-number">03 / RESPOND</span><div className="feature-icon">⌘</div><h3>Incident dashboard</h3><p>Investigate suspicious IPs, prioritize incidents, and track response status from detection to resolution.</p><a href="/sign-in">Sign in to Watcher <span>↗</span></a></article>
         </div>
       </section>
-      <footer className="landing-footer"><Link className="landing-brand" href="/"><span className="brand-mark">IR</span><span>IR-System</span></Link><span>Incident response for the storefronts you run.</span><Link href="/sign-in">Dashboard sign in ↗</Link></footer>
+      <footer className="landing-footer"><Link className="landing-brand" href="/"><span className="brand-mark">W</span><span>Watcher</span></Link><span>Incident response for the storefronts you run.</span><Link href="/sign-in">Dashboard sign in ↗</Link></footer>
     </main>
   );
 }

@@ -6,12 +6,12 @@ const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'IR-System — Security Operations',
+  title: 'Watcher — Security Operations',
   description: 'Incident response and security monitoring for e-commerce sites.',
-  applicationName: 'IR-System',
+  applicationName: 'Watcher',
   manifest: '/manifest.webmanifest',
   themeColor: '#0b0d10',
-  appleWebApp: { capable: true, title: 'IR-System', statusBarStyle: 'black-translucent' },
+  appleWebApp: { capable: true, title: 'Watcher', statusBarStyle: 'black-translucent' },
   icons: {
     icon: [{ url: '/icon.svg', type: 'image/svg+xml' }, { url: '/icon-192.png', sizes: '192x192', type: 'image/png' }],
     apple: [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],

@@ -1,6 +1,6 @@
 {
-  "name": "IR-System",
-  "short_name": "IR-System",
+  "name": "Watcher",
+  "short_name": "Watcher",
   "description": "Incident response and security monitoring for e-commerce sites.",
   "start_url": "/?from=pwa",
   "scope": "/",
