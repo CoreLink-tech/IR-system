@@ -60,7 +60,7 @@ export default function IncidentDetailPage() {
 
   useEffect(() => {
     void load();
-  }, [id]);
+  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps -- load reads latest state each call
 
   async function setStatus(status: string) {
     setBusy(true);

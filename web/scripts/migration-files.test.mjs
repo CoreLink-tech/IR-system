@@ -2,7 +2,7 @@
  * Static checks for migration files (no DB required).
  * Run: node scripts/migration-files.test.mjs
  */
-import { readFileSync, readdirSync, existsSync } from 'fs';
+import { readFileSync, readdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import assert from 'assert';
