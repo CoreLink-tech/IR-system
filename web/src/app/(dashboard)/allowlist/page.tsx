@@ -17,6 +17,7 @@ export default function AllowlistPage() {
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const load = () =>
     api<{ data: Row[] }>('/security/allow')
@@ -24,7 +25,8 @@ export default function AllowlistPage() {
       .catch((e: unknown) => setError(e instanceof ApiError ? e.message : 'Failed'));
 
   useEffect(() => {
-    void load();
+    setLoading(true);
+    void load().finally(() => setLoading(false));
   }, []);
 
   async function add(e: FormEvent) {
@@ -33,7 +35,10 @@ export default function AllowlistPage() {
     setBusy(true);
     setError(null);
     try {
-      await api('/security/allow', { method: 'POST', json: { ipAddress: ip.trim(), reason: reason.trim() } });
+      await api('/security/allow', {
+        method: 'POST',
+        json: { ipAddress: ip.trim(), reason: reason.trim() },
+      });
       setIp('');
       setReason('');
       await load();
@@ -44,64 +49,112 @@ export default function AllowlistPage() {
     }
   }
 
+  async function remove(id: string, address: string) {
+    if (!window.confirm(`Remove ${address} from allowlist?`)) return;
+    try {
+      await api(`/security/allow/${encodeURIComponent(address)}`, { method: 'DELETE' });
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to remove');
+    }
+  }
+
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">Allowlist</h1>
-      <p className="text-sm text-neutral-600">
-        Addresses on the allowlist are never auto-blocked and cannot be blocked manually until removed.
-      </p>
-      {error && <p className="text-red-600">{error}</p>}
-      <form onSubmit={add} className="flex flex-wrap items-end gap-3 rounded-lg border bg-white p-4">
-        <label className="text-sm">
-          IP address
-          <input className="mt-1 block rounded border px-3 py-2 font-mono" value={ip} onChange={(e) => setIp(e.target.value)} />
-        </label>
-        <label className="text-sm">
-          Reason
-          <input className="mt-1 block w-64 rounded border px-3 py-2" value={reason} onChange={(e) => setReason(e.target.value)} />
-        </label>
-        <button type="submit" disabled={busy || !ip.trim() || !reason.trim()} className="rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50">
-          {busy ? 'Adding…' : 'Add'}
-        </button>
+    <div className="space-y-5">
+      <div>
+        <h1 className="text-xl font-semibold tracking-tight">Allowlist</h1>
+        <p className="mt-0.5 text-sm text-[var(--text-secondary)]">
+          Addresses on the allowlist are never auto-blocked and cannot be blocked manually until removed.
+        </p>
+      </div>
+
+      {error && (
+        <div className="rounded-[var(--radius)] border border-[var(--critical)]/30 bg-[var(--critical-muted)] px-4 py-3 text-sm text-[var(--critical)]">
+          {error}
+        </div>
+      )}
+
+      <form onSubmit={add} className="surface p-4">
+        <div className="mb-3 text-sm font-medium">Allow an IP address</div>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-[180px] flex-1">
+            <label className="mb-1 block text-xs text-[var(--text-secondary)]">IP address</label>
+            <input
+              className="input mono"
+              value={ip}
+              onChange={(e) => setIp(e.target.value)}
+              placeholder="203.0.113.10"
+              required
+            />
+          </div>
+          <div className="min-w-[220px] flex-[2]">
+            <label className="mb-1 block text-xs text-[var(--text-secondary)]">Reason</label>
+            <input
+              className="input"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Office network"
+              required
+            />
+          </div>
+          <button type="submit" disabled={busy || !ip.trim() || !reason.trim()} className="btn btn-primary">
+            {busy ? 'Adding…' : 'Allow IP'}
+          </button>
+        </div>
       </form>
-      <div className="overflow-x-auto rounded-lg border bg-white">
-        <table className="min-w-full text-left text-sm">
-          <thead className="border-b bg-neutral-50 text-neutral-600">
+
+      <div className="table-container">
+        <table className="data-table">
+          <thead>
             <tr>
-              <th className="px-3 py-2">Address</th>
-              <th className="px-3 py-2">Reason</th>
-              <th className="px-3 py-2">Expires</th>
-              <th className="px-3 py-2">Added</th>
-              <th className="px-3 py-2"></th>
+              <th>IP Address</th>
+              <th>Reason</th>
+              <th>Expires</th>
+              <th>Created</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
+            {loading && (
+              <tr>
+                <td colSpan={5} className="py-8 text-center text-[var(--text-muted)]">
+                  Loading…
+                </td>
+              </tr>
+            )}
+            {!loading && rows.length === 0 && (
+              <tr>
+                <td colSpan={5} className="py-8 text-center text-[var(--text-muted)]">
+                  No allowlisted addresses
+                </td>
+              </tr>
+            )}
             {rows.map((r) => (
-              <tr key={r.id} className="border-b last:border-0">
-                <td className="px-3 py-2 font-mono text-xs">{r.ipAddress}</td>
-                <td className="px-3 py-2">{r.reason}</td>
-                <td className="px-3 py-2">{r.expiresAt ? new Date(r.expiresAt).toLocaleString() : 'Never'}</td>
-                <td className="px-3 py-2 text-neutral-500">{new Date(r.createdAt).toLocaleString()}</td>
-                <td className="px-3 py-2">
+              <tr key={r.id || r.ipAddress}>
+                <td className="mono text-sm font-medium">{r.ipAddress}</td>
+                <td className="max-w-[280px] truncate">{r.reason}</td>
+                <td className="text-xs text-[var(--text-muted)]">
+                  {r.expiresAt ? new Date(r.expiresAt).toLocaleString() : 'Never'}
+                </td>
+                <td className="text-xs text-[var(--text-muted)]">
+                  {new Date(r.createdAt).toLocaleString(undefined, {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </td>
+                <td>
                   <button
                     type="button"
-                    className="text-red-700 underline"
-                    onClick={async () => {
-                      if (!window.confirm(`Remove ${r.ipAddress} from allowlist?`)) return;
-                      await api(`/security/allow/${encodeURIComponent(r.ipAddress)}`, { method: 'DELETE' });
-                      await load();
-                    }}
+                    className="btn btn-ghost text-xs text-[var(--critical)]"
+                    onClick={() => remove(r.id, r.ipAddress)}
                   >
                     Remove
                   </button>
                 </td>
               </tr>
             ))}
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-3 py-6 text-center text-neutral-500">Allowlist is empty.</td>
-              </tr>
-            )}
           </tbody>
         </table>
       </div>
