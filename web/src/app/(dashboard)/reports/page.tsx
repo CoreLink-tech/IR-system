@@ -28,13 +28,6 @@ type Exec = {
     createdAt: string;
   }>;
   plainEnglish: string;
-  blocksInPeriod?: Array<{
-    ipAddress: string;
-    reason: string;
-    automatic: boolean;
-    active: boolean;
-    createdAt: string;
-  }>;
 };
 
 export default function ReportsPage() {
@@ -43,31 +36,35 @@ export default function ReportsPage() {
   const [tech, setTech] = useState<Exec | null>(null);
   const [tab, setTab] = useState<'executive' | 'technical'>('executive');
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setError(null);
-    api<Exec>(`/reports/executive?days=${days}`)
-      .then(setExec)
-      .catch((e: unknown) => setError(e instanceof ApiError ? e.message : 'Failed'));
-    api<Exec>(`/reports/technical?days=${days}`)
-      .then(setTech)
-      .catch(() => {
-        /* viewers may not get technical */
-      });
+    setLoading(true);
+    Promise.all([
+      api<Exec>(`/reports/executive?days=${days}`).then(setExec).catch((e: unknown) => {
+        setError(e instanceof ApiError ? e.message : 'Failed');
+      }),
+      api<Exec>(`/reports/technical?days=${days}`).then(setTech).catch(() => {}),
+    ]).finally(() => setLoading(false));
   }, [days]);
 
   const data = tab === 'executive' ? exec : tech || exec;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">Reports</h1>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="kicker">Intelligence</div>
+          <h1 className="text-[22px] font-[750] tracking-[-0.5px]">Reports</h1>
+          <p className="mt-1 text-[13px] text-[#718079]">Security posture summaries for the selected period.</p>
+        </div>
         <div className="flex flex-wrap gap-2">
           {[7, 14, 30].map((d) => (
             <button
               key={d}
               type="button"
-              className={`rounded px-3 py-1 text-sm ${days === d ? 'bg-blue-600 text-white' : 'border bg-white'}`}
+              className={`btn text-[11px] ${days === d ? 'btn-primary' : 'btn-secondary'}`}
               onClick={() => setDays(d)}
             >
               {d} days
@@ -75,99 +72,90 @@ export default function ReportsPage() {
           ))}
         </div>
       </div>
+
       <div className="flex gap-2">
         <button
           type="button"
-          className={`rounded px-3 py-1.5 text-sm ${tab === 'executive' ? 'bg-neutral-900 text-white' : 'border bg-white'}`}
+          className={`btn text-[11px] ${tab === 'executive' ? 'btn-primary' : 'btn-secondary'}`}
           onClick={() => setTab('executive')}
         >
           Executive
         </button>
         <button
           type="button"
-          className={`rounded px-3 py-1.5 text-sm ${tab === 'technical' ? 'bg-neutral-900 text-white' : 'border bg-white'}`}
+          className={`btn text-[11px] ${tab === 'technical' ? 'btn-primary' : 'btn-secondary'}`}
           onClick={() => setTab('technical')}
         >
           Technical
         </button>
       </div>
-      {error && <p className="text-red-600">{error}</p>}
-      {!data && !error && <p className="text-neutral-500">Loading…</p>}
+
+      {error && (
+        <div className="rounded-[5px] border border-[#b64040]/30 bg-[#faeeee] px-4 py-3 text-[12px] text-[#a13a3a]">{error}</div>
+      )}
+      {loading && !data && <div className="text-[13px] text-[#718079]">Loading…</div>}
+
       {data && (
         <>
-          <div className="rounded-lg border bg-white p-4">
-            <div className="text-xs text-neutral-500">Posture</div>
-            <div className="text-2xl font-semibold">{data.posture}</div>
-            <p className="mt-2 text-sm text-neutral-700">{data.plainEnglish}</p>
-            <p className="mt-1 text-xs text-neutral-400">Generated {new Date(data.generatedAt).toLocaleString()}</p>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              { label: 'Posture', value: data.posture },
+              { label: 'Open incidents', value: String(data.summary.openIncidents) },
+              { label: 'Events in period', value: String(data.summary.eventsInPeriod) },
+              { label: 'Active blocks', value: String(data.summary.activeBlocks) },
+            ].map((m) => (
+              <div key={m.label} className="metric">
+                <div className="metric-label">{m.label}</div>
+                <div className="metric-value" style={{ fontSize: 22 }}>{m.value}</div>
+              </div>
+            ))}
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <Tile label="Open incidents" value={data.summary.openIncidents} />
-            <Tile label="Critical open" value={data.summary.criticalOpen} />
-            <Tile label="High open" value={data.summary.highOpen} />
-            <Tile label="Events in period" value={data.summary.eventsInPeriod} />
-            <Tile label="High-risk events" value={data.summary.highRiskEvents} />
-            <Tile label="Active blocks" value={data.summary.activeBlocks} />
-          </div>
-          <section>
-            <h2 className="mb-2 font-medium">Top event types</h2>
-            <ul className="rounded-lg border bg-white divide-y text-sm">
-              {data.topEventTypes.map((t) => (
-                <li key={t.type} className="flex justify-between px-3 py-2">
-                  <span className="font-mono text-xs">{t.type}</span>
-                  <span>{t.count}</span>
-                </li>
-              ))}
-              {data.topEventTypes.length === 0 && (
-                <li className="px-3 py-4 text-neutral-500">No events in this period.</li>
-              )}
-            </ul>
-          </section>
-          <section>
-            <h2 className="mb-2 font-medium">Recent incidents</h2>
-            <ul className="rounded-lg border bg-white divide-y text-sm">
-              {data.recentIncidents.map((i) => (
-                <li key={i.id} className="px-3 py-2">
-                  <Link className="text-blue-700 underline" href={`/incidents/${i.id}`}>
-                    #{i.publicNumber} {i.title}
-                  </Link>
-                  <span className="ml-2 text-neutral-500">
-                    {i.status} · {i.severity} · risk {i.riskScore}
-                  </span>
-                </li>
-              ))}
-              {data.recentIncidents.length === 0 && (
-                <li className="px-3 py-4 text-neutral-500">None in this period.</li>
-              )}
-            </ul>
-          </section>
-          {tab === 'technical' && data.blocksInPeriod && (
-            <section>
-              <h2 className="mb-2 font-medium">Blocks in period</h2>
-              <ul className="rounded-lg border bg-white divide-y text-sm">
-                {data.blocksInPeriod.map((b, idx) => (
-                  <li key={idx} className="px-3 py-2 font-mono text-xs">
-                    {b.ipAddress} · {b.reason} · {b.automatic ? 'auto' : 'manual'} ·{' '}
-                    {b.active ? 'active' : 'ended'}
-                  </li>
-                ))}
-                {data.blocksInPeriod.length === 0 && (
-                  <li className="px-3 py-4 text-neutral-500">No blocks in this period.</li>
-                )}
-              </ul>
-            </section>
+
+          {data.plainEnglish && (
+            <div className="surface p-4">
+              <div className="text-[11px] font-[750] text-[#718079]">Summary</div>
+              <p className="mt-2 text-[13px] leading-relaxed text-[#405148]">{data.plainEnglish}</p>
+            </div>
           )}
+
+          <div className="surface">
+            <div className="border-b border-[#eaf0ec] px-4 py-3 text-[12px] font-[750]">Recent incidents in period</div>
+            <div className="overflow-x-auto">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Title</th>
+                    <th>Severity</th>
+                    <th>Status</th>
+                    <th>IP</th>
+                    <th>Risk</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(data.recentIncidents || []).length === 0 && (
+                    <tr><td colSpan={6} className="py-6 text-center text-[#718079]">None in this period</td></tr>
+                  )}
+                  {(data.recentIncidents || []).map((inc) => (
+                    <tr key={inc.id}>
+                      <td className="mono">{inc.publicNumber}</td>
+                      <td>
+                        <Link href={`/incidents/${inc.id}`} className="font-medium text-[#176b52] hover:underline">
+                          {inc.title}
+                        </Link>
+                      </td>
+                      <td>{inc.severity}</td>
+                      <td>{inc.status}</td>
+                      <td className="mono">{inc.sourceIp || '—'}</td>
+                      <td className="tabular-nums">{inc.riskScore}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </>
       )}
-    </div>
-  );
-}
-
-function Tile({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-lg border bg-white p-3">
-      <div className="text-xs text-neutral-500">{label}</div>
-      <div className="text-xl font-semibold">{value}</div>
     </div>
   );
 }

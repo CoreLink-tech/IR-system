@@ -36,7 +36,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       // Super admin only
       { href: '/admin/users', label: 'Users', icon: 'users', roles: ['SUPER_ADMIN'] },
-      { href: '/admin/api-keys', label: 'API Keys', icon: 'key', roles: ['SUPER_ADMIN'] },
+      { href: '/admin/api-keys', label: 'API Keys', icon: 'key', roles: ['SUPER_ADMIN', 'SECURITY_ADMIN'] },
       { href: '/admin/settings', label: 'Settings', icon: 'settings', roles: ['SUPER_ADMIN'] },
       // Super admin + Security admin
       { href: '/admin/audit', label: 'Audit Log', icon: 'list', roles: ['SUPER_ADMIN', 'SECURITY_ADMIN'] },

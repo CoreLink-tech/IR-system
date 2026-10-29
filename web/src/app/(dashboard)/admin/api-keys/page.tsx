@@ -69,7 +69,7 @@ export default function ApiKeysPage() {
   }
 
   const phpSnippet = `<?php
-// IR-System client integration
+// Watcher client integration
 // Place this in your application bootstrap or middleware
 
 define('IR_BASE_URL', '${BASE_URL}');
@@ -118,7 +118,7 @@ function ir_is_blocked(string \$ipAddress): bool {
 // ir_send_event('login_failed', \$_SERVER['REMOTE_ADDR'], ['user' => \$email]);
 `;
 
-  const nodeSnippet = `// IR-System Node.js client
+  const nodeSnippet = `// Watcher Node.js client
 const IR_BASE_URL = '${BASE_URL}';
 const IR_API_KEY = 'YOUR_API_KEY_HERE';
 
@@ -150,10 +150,10 @@ async function irIsBlocked(ipAddress) {
 // Example: await irSendEvent('login_failed', req.ip, { user: email });
 `;
 
-  const aiPrompt = `Integrate IR-System security monitoring into this application.
+  const aiPrompt = `Integrate Watcher security monitoring into this application.
 
 Base URL: ${BASE_URL}
-API Key: (paste the key generated in the IR-System admin dashboard)
+API Key: (paste the key generated in the Watcher admin dashboard)
 
 Requirements:
 1. On every failed login / authentication failure, send a POST to {BASE_URL}/api/v1/events with:
@@ -164,7 +164,7 @@ Requirements:
 
 3. Before processing sensitive requests, call GET {BASE_URL}/api/v1/security/blocked-ips with the same Authorization header. If the client IP is in the returned list, reject the request with HTTP 403.
 
-4. Keep the integration non-blocking (timeouts 2–3s, fire-and-forget for event sends). Do not let IR-System downtime break the main application.
+4. Keep the integration non-blocking (timeouts 2–3s, fire-and-forget for event sends). Do not let Watcher downtime break the main application.
 
 5. Store the API key in environment variables, never hardcode it in source control.
 

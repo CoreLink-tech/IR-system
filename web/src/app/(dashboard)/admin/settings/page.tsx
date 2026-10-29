@@ -15,11 +15,16 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">Settings</h1>
-      <p className="text-sm text-neutral-600">Read-only operational settings. Secrets are never shown.</p>
-      {error && <p className="text-red-600">{error}</p>}
+      <div>
+        <div className="kicker">Administration</div>
+        <h1 className="text-[22px] font-[750] tracking-[-0.5px]">Settings</h1>
+        <p className="mt-1 text-[13px] text-[#718079]">Read-only operational settings. Secrets are never shown.</p>
+      </div>
+      {error && (
+        <div className="rounded-[5px] border border-[#b64040]/30 bg-[#faeeee] px-4 py-3 text-[12px] text-[#a13a3a]">{error}</div>
+      )}
       {data && (
-        <pre className="overflow-x-auto rounded-lg border bg-white p-4 text-sm">
+        <pre className="surface overflow-x-auto p-4 text-[12px] text-[#405148]">
           {JSON.stringify(data, null, 2)}
         </pre>
       )}

@@ -16,6 +16,7 @@ export default function RulesPage() {
   const [rows, setRows] = useState<Rule[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const load = () =>
     api<{ data: Rule[] }>('/rules')
@@ -23,7 +24,8 @@ export default function RulesPage() {
       .catch((e: unknown) => setError(e instanceof ApiError ? e.message : 'Failed'));
 
   useEffect(() => {
-    void load();
+    setLoading(true);
+    void load().finally(() => setLoading(false));
   }, []);
 
   async function toggle(code: string, isEnabled: boolean) {
@@ -41,30 +43,36 @@ export default function RulesPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">Detection rules</h1>
-      <p className="text-sm text-neutral-600">
-        These control how events are scored and when automatic blocks happen. Changes apply to new events only.
-      </p>
-      {error && <p className="text-red-600">{error}</p>}
+      <div>
+        <div className="kicker">Administration</div>
+        <h1 className="text-[22px] font-[750] tracking-[-0.5px]">Detection rules</h1>
+        <p className="mt-1 text-[13px] text-[#718079]">
+          Control how events are scored and when automatic blocks happen. Changes apply to new events only.
+        </p>
+      </div>
+      {error && (
+        <div className="rounded-[5px] border border-[#b64040]/30 bg-[#faeeee] px-4 py-3 text-[12px] text-[#a13a3a]">{error}</div>
+      )}
+      {loading && <div className="text-[13px] text-[#718079]">Loading rules…</div>}
       <div className="space-y-3">
         {rows.map((r) => (
-          <div key={r.code} className="rounded-lg border bg-white p-4">
+          <div key={r.code} className="surface p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="font-medium">{r.title}</h2>
-                <p className="text-sm text-neutral-600">{r.description}</p>
-                <p className="mt-1 font-mono text-xs text-neutral-500">{r.code}</p>
-                <p className="mt-1 text-xs text-neutral-500">
+              <div className="min-w-0 flex-1">
+                <h2 className="text-[14px] font-[750]">{r.title}</h2>
+                <p className="mt-1 text-[12px] text-[#5f6f67]">{r.description}</p>
+                <p className="mt-1 mono text-[10px] text-[#8a9690]">{r.code}</p>
+                <p className="mt-1 text-[10px] text-[#8a9690]">
                   Config: {Object.entries(r.config).map(([k, v]) => `${k}=${v}`).join(', ')}
                 </p>
               </div>
               <button
                 type="button"
                 disabled={busy === r.code}
-                className={`rounded px-3 py-1.5 text-sm ${r.isEnabled ? 'bg-green-600 text-white' : 'border bg-neutral-100'}`}
+                className={`btn text-[11px] ${r.isEnabled ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => void toggle(r.code, !r.isEnabled)}
               >
-                {r.isEnabled ? 'Enabled' : 'Disabled'}
+                {busy === r.code ? '…' : r.isEnabled ? 'Enabled' : 'Disabled'}
               </button>
             </div>
           </div>
