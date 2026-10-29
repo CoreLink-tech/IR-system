@@ -5,39 +5,54 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { api, setAccessToken, type PublicUser } from '@/lib/client-api';
 
-const NAV_GROUPS = [
+type NavItem = { href: string; label: string; icon: string; roles: string[] };
+type NavGroup = { label: string; items: NavItem[] };
+
+/** Role-scoped navigation. Only items whose roles include the current user role are shown. */
+const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Monitor',
     items: [
-      { href: '/overview', label: 'Overview', icon: 'grid' },
-      { href: '/incidents', label: 'Incidents', icon: 'alert' },
-      { href: '/ips', label: 'IP Intelligence', icon: 'globe' },
+      { href: '/overview', label: 'Overview', icon: 'grid', roles: ['SUPER_ADMIN', 'SECURITY_ADMIN', 'ANALYST', 'VIEWER'] },
+      { href: '/incidents', label: 'Incidents', icon: 'alert', roles: ['SUPER_ADMIN', 'SECURITY_ADMIN', 'ANALYST', 'VIEWER'] },
+      { href: '/ips', label: 'IP Intelligence', icon: 'globe', roles: ['SUPER_ADMIN', 'SECURITY_ADMIN', 'ANALYST', 'VIEWER'] },
     ],
   },
   {
     label: 'Enforcement',
     items: [
-      { href: '/blocking', label: 'Blocklist', icon: 'block' },
-      { href: '/allowlist', label: 'Allowlist', icon: 'check' },
+      { href: '/blocking', label: 'Blocklist', icon: 'block', roles: ['SUPER_ADMIN', 'SECURITY_ADMIN'] },
+      { href: '/allowlist', label: 'Allowlist', icon: 'check', roles: ['SUPER_ADMIN', 'SECURITY_ADMIN'] },
     ],
   },
   {
     label: 'Intelligence',
     items: [
-      { href: '/reports', label: 'Reports', icon: 'file' },
+      { href: '/reports', label: 'Reports', icon: 'file', roles: ['SUPER_ADMIN', 'SECURITY_ADMIN', 'ANALYST'] },
     ],
   },
   {
     label: 'Administration',
     items: [
-      { href: '/admin/users', label: 'Users', icon: 'users' },
-      { href: '/admin/api-keys', label: 'API Keys', icon: 'key' },
-      { href: '/admin/audit', label: 'Audit Log', icon: 'list' },
-      { href: '/admin/rules', label: 'Detection Rules', icon: 'sliders' },
-      { href: '/admin/settings', label: 'Settings', icon: 'settings' },
+      // Super admin only
+      { href: '/admin/users', label: 'Users', icon: 'users', roles: ['SUPER_ADMIN'] },
+      { href: '/admin/api-keys', label: 'API Keys', icon: 'key', roles: ['SUPER_ADMIN'] },
+      { href: '/admin/settings', label: 'Settings', icon: 'settings', roles: ['SUPER_ADMIN'] },
+      // Super admin + Security admin
+      { href: '/admin/audit', label: 'Audit Log', icon: 'list', roles: ['SUPER_ADMIN', 'SECURITY_ADMIN'] },
+      { href: '/admin/rules', label: 'Detection Rules', icon: 'sliders', roles: ['SUPER_ADMIN', 'SECURITY_ADMIN'] },
     ],
   },
 ];
+
+function navForRole(role: string): NavGroup[] {
+  return NAV_GROUPS
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => item.roles.includes(role)),
+    }))
+    .filter((group) => group.items.length > 0);
+}
 
 function Icon({ name }: { name: string }) {
   const props = { width: 17, height: 17, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7 };
@@ -140,7 +155,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto">
-          {NAV_GROUPS.map((group) => (
+          {navForRole(user.role).map((group) => (
             <div key={group.label}>
               <div className="mb-[7px] mt-[12px] px-[10px] text-[10px] font-[750] uppercase tracking-[1.2px] text-[#8a9690]">
                 {group.label}
