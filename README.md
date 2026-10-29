@@ -7,7 +7,7 @@ Incident response and security monitoring for e-commerce sites.
 - **Clients:** send events with API key; poll blocklist and enforce locally
 - **Host:** Vercel (or any Node host)
 
-## Quick start
+## Quick start (local)
 
 ```bash
 cd web
@@ -42,11 +42,30 @@ POST /api/v1/auth/login
 { "email": "...", "password": "...", "useCookie": true }
 ```
 
-## Vercel
+## Deploy to Vercel (fresh)
 
-1. Project root directory: **`web`**
-2. Env: `DATABASE_URL`, `DATABASE_AUTH_TOKEN` (Turso), JWT secrets, `API_KEY_HASH_PEPPER`
-3. Deploy
+1. Go to [vercel.com/new](https://vercel.com/new) and import this repository.
+2. **Root Directory** → set to `web`
+3. Add these Environment Variables:
+
+| Variable | Required | Notes |
+|----------|----------|-------|
+| `DATABASE_URL` | Yes | Turso `libsql://...` URL |
+| `DATABASE_AUTH_TOKEN` | Yes | Turso token |
+| `JWT_SECRET` | Yes | Long random string (64+ chars) |
+| `JWT_REFRESH_SECRET` | Yes | Another long random string |
+| `API_KEY_HASH_PEPPER` | Yes | Random string (32+ chars) |
+| `CRON_SECRET` | Recommended | Random string for cron jobs |
+| `BOOTSTRAP_ADMIN_EMAIL` | Recommended | Your email for the first admin |
+
+Generate secrets:
+```bash
+openssl rand -base64 48
+```
+
+4. Click **Deploy**.
+
+After the first deploy, run the migration + seed (see [docs/PRODUCTION-LAUNCH.md](./docs/PRODUCTION-LAUNCH.md)).
 
 ## PHP agent
 
@@ -58,7 +77,6 @@ POST /api/v1/auth/login
 
 ## Production launch
 
-Step-by-step env vars, Vercel, Turso, and first-24h checks:
+Full step-by-step (Turso, secrets, seed, first-24h checks):
 
 → [docs/PRODUCTION-LAUNCH.md](./docs/PRODUCTION-LAUNCH.md)
-
