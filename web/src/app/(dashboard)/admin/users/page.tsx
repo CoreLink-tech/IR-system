@@ -13,7 +13,7 @@ type UserRow = {
   lastLoginAt: string | null;
 };
 
-const roles = ['SUPER_ADMIN', 'VIEWER'] as const;
+const roles = ['SUPER_ADMIN', 'SECURITY_ADMIN'] as const;
 
 export default function AdminUsersPage() {
   const [rows, setRows] = useState<UserRow[]>([]);
@@ -27,7 +27,7 @@ export default function AdminUsersPage() {
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<(typeof roles)[number]>('VIEWER');
+  const [role, setRole] = useState<(typeof roles)[number]>('SECURITY_ADMIN');
 
   const load = () =>
     Promise.all([
@@ -59,7 +59,7 @@ export default function AdminUsersPage() {
       setEmail('');
       setName('');
       setPassword('');
-      setRole('VIEWER');
+      setRole('SECURITY_ADMIN');
       setCreateOpen(false);
       await load();
     } catch (e: unknown) {
