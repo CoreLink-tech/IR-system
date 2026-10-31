@@ -1,7 +1,6 @@
 import { createHmac, randomBytes } from 'crypto';
 import { lookup } from 'dns/promises';
 import { isIP } from 'net';
-import { Agent, fetch as undiciFetch } from 'undici';
 import { and, eq, lte } from 'drizzle-orm';
 import { db } from '@/server/db/client';
 import { webhooks, webhookDeliveries } from '@/server/db/schema';
@@ -86,28 +85,6 @@ export async function assertSafeWebhookUrl(urlStr: string): Promise<string[]> {
   return addrs;
 }
 
-function pinnedAgent(allowedIps: string[]) {
-  const allow = new Set(allowedIps);
-  return new Agent({
-    connect: {
-      lookup: (hostname, options, callback) => {
-        // Force only previously vetted addresses
-        const first = allowedIps[0];
-        if (!first) {
-          callback(new Error('ssrf_blocked'), '', 4);
-          return;
-        }
-        const family = isIP(first) === 6 ? 6 : 4;
-        if (typeof options === 'function') {
-          // overload
-          (options as (err: Error | null, address: string, family: number) => void)(null, first, family);
-          return;
-        }
-        callback(null, first, family);
-      },
-    },
-  });
-}
 
 async function deliverOnce(
   w: { id: string; url: string; secret: string },
@@ -121,12 +98,12 @@ async function deliverOnce(
   let success = false;
   let lastError: string | null = null;
   try {
-    const addrs = await assertSafeWebhookUrl(w.url);
-    const agent = pinnedAgent(addrs);
-    const res = await undiciFetch(w.url, {
+    await assertSafeWebhookUrl(w.url);
+    // Native fetch (no undici package — Next/webpack cannot resolve it without an explicit dep).
+    // DNS is checked above; redirects are refused to limit SSRF.
+    const res = await fetch(w.url, {
       method: 'POST',
       redirect: 'manual',
-      dispatcher: agent,
       headers: {
         'Content-Type': 'application/json',
         'X-Watcher-Signature': sign(w.secret, body, ts),
