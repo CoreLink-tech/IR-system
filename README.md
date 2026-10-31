@@ -1,4 +1,6 @@
-# IR-System — Next.js + Turso
+# Watcher (IR-System) — Next.js + Turso
+
+**Product name: Watcher.** Technical repo name: IR-System.
 
 Incident response and security monitoring for e-commerce sites.
 
