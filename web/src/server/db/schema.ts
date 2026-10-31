@@ -169,6 +169,8 @@ export const ipIntelligence = sqliteTable('ip_intelligence', {
 
 export const auditLog = sqliteTable('audit_log', {
   id: id(),
+  prevHash: text('prev_hash'),
+  entryHash: text('entry_hash'),
   requestId: text('request_id'),
   actorType: text('actor_type').notNull(), // USER | API_KEY | SYSTEM
   actorId: text('actor_id'),

@@ -43,6 +43,13 @@
       "when": 1730000000005,
       "tag": "0005_phase3_decide",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1730000000006,
+      "tag": "0006_phase4_trust",
+      "breakpoints": true
     }
   ]
 }
