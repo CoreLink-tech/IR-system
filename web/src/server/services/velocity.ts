@@ -173,3 +173,22 @@ export async function countEventsForSession(opts: {
   const rows = await db.select({ c: sql<number>`count(*)` }).from(events).where(and(...conditions));
   return Number(rows[0]?.c ?? 0);
 }
+
+export async function countDistinctLogPaths(opts: {
+  tenantId: string;
+  ip: string;
+  windowMinutes: number;
+}): Promise<number> {
+  const since = new Date(Date.now() - opts.windowMinutes * 60_000);
+  const rows = await db
+    .select({ c: sql<number>`count(distinct ${logEntries.path})` })
+    .from(logEntries)
+    .where(
+      and(
+        eq(logEntries.tenantId, opts.tenantId),
+        eq(logEntries.ipAddress, opts.ip),
+        gte(logEntries.createdAt, since),
+      ),
+    );
+  return Number(rows[0]?.c ?? 0);
+}

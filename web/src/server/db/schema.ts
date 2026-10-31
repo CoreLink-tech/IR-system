@@ -193,9 +193,11 @@ export const loginThrottle = sqliteTable('login_throttle', {
 export const detectionRules = sqliteTable('detection_rules', {
   code: text('code').primaryKey(),
   isEnabled: integer('is_enabled', { mode: 'boolean' }).notNull().default(true),
+  mode: text('mode').default('enforce'), // enforce | monitor
   priority: integer('priority').notNull().default(100),
   config: text('config').notNull().default('{}'), // JSON
   updatedAt: tsNull('updated_at'),
+  tenantId: text('tenant_id'),
 });
 
 
@@ -299,3 +301,23 @@ export const ruleCooldowns = sqliteTable('rule_cooldowns', {
   untilAt: ts('until_at'),
   createdAt: ts('created_at').default(sql`(unixepoch() * 1000)`),
 }, (t) => [index('rule_cooldowns_lookup_idx').on(t.ruleCode, t.entityKey, t.untilAt)]);
+
+export const ruleHits = sqliteTable('rule_hits', {
+  id: id(),
+  tenantId: text('tenant_id'),
+  ruleCode: text('rule_code').notNull(),
+  entityKey: text('entity_key'),
+  eventId: text('event_id'),
+  incidentId: text('incident_id'),
+  mode: text('mode').notNull().default('enforce'),
+  createdAt: ts('created_at').default(sql`(unixepoch() * 1000)`),
+}, (t) => [index('rule_hits_code_idx').on(t.ruleCode, t.createdAt)]);
+
+export const ruleVerdicts = sqliteTable('rule_verdicts', {
+  id: id(),
+  ruleCode: text('rule_code').notNull(),
+  verdict: text('verdict').notNull(),
+  incidentId: text('incident_id'),
+  actorId: text('actor_id'),
+  createdAt: ts('created_at').default(sql`(unixepoch() * 1000)`),
+}, (t) => [index('rule_verdicts_code_idx').on(t.ruleCode)]);

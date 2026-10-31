@@ -2,7 +2,7 @@ import { desc, eq } from 'drizzle-orm';
 import { err, json, requestId } from '@/server/api';
 import { requireUser } from '@/server/auth/require-user';
 import { db } from '@/server/db/client';
-import { events, incidents, incidentStatusHistory, incidentNotes } from '@/server/db/schema';
+import { events, incidents, incidentStatusHistory, incidentNotes, ruleVerdicts } from '@/server/db/schema';
 import { newId } from '@/server/auth/crypto';
 
 export const runtime = 'nodejs';
@@ -102,6 +102,27 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       actorId: user.id,
       createdAt: new Date(),
     });
+    if (body.status === 'FALSE_POSITIVE' || body.status === 'RESOLVED') {
+      const linked = await db.select().from(events).where(eq(events.incidentId, id)).limit(20);
+      const codes = new Set<string>();
+      for (const e of linked) {
+        try {
+          for (const c of JSON.parse(e.matchedRules || '[]') as string[]) codes.add(c);
+        } catch { /* */ }
+      }
+      const verdict = body.status === 'FALSE_POSITIVE' ? 'false_positive' : 'true_positive';
+      for (const code of codes) {
+        if (code === 'entity_ip_elevated') continue;
+        await db.insert(ruleVerdicts).values({
+          id: newId(),
+          ruleCode: code,
+          verdict,
+          incidentId: id,
+          actorId: user.id,
+          createdAt: new Date(),
+        });
+      }
+    }
   }
   await db.update(incidents).set(patch).where(eq(incidents.id, id));
   return json({ ok: true }, { requestId: rid });

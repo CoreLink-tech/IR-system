@@ -183,6 +183,19 @@ export const RULE_CATALOG: RuleDef[] = [
     limits: { blockCooldownMinutes: { min: 5, max: 1440 } },
   },
   {
+    code: 'path_scan',
+    title: 'Path scan (logs)',
+    description: 'Many distinct paths in access logs from one IP (recon/scanning).',
+    defaultEnabled: true,
+    defaultPriority: 56,
+    defaultConfig: { windowMinutes: 10, distinctPaths: 25, bonusScore: 25 },
+    limits: {
+      windowMinutes: { min: 1, max: 60 },
+      distinctPaths: { min: 5, max: 500 },
+      bonusScore: { min: 0, max: 60 },
+    },
+  },
+  {
     code: 'auto_block',
     title: 'Automatic block threshold',
     description: 'Block the source IP when risk score reaches this value (private/allowlisted IPs never blocked).',
@@ -204,6 +217,7 @@ export async function listRules() {
       title: def.title,
       description: def.description,
       isEnabled: row ? !!row.isEnabled : def.defaultEnabled,
+      mode: (row?.mode === 'monitor' ? 'monitor' : 'enforce') as 'enforce' | 'monitor',
       priority: row?.priority ?? def.defaultPriority,
       config,
       defaultConfig: def.defaultConfig,
@@ -215,17 +229,17 @@ export async function listRules() {
 }
 
 export async function getRuleRuntime(): Promise<
-  Record<string, { enabled: boolean; config: Record<string, number> }>
+  Record<string, { enabled: boolean; mode: 'enforce' | 'monitor'; config: Record<string, number> }>
 > {
   const listed = await listRules();
-  const out: Record<string, { enabled: boolean; config: Record<string, number> }> = {};
-  for (const r of listed) out[r.code] = { enabled: r.isEnabled, config: r.config };
+  const out: Record<string, { enabled: boolean; mode: 'enforce' | 'monitor'; config: Record<string, number> }> = {};
+  for (const r of listed) out[r.code] = { enabled: r.isEnabled, mode: r.mode, config: r.config };
   return out;
 }
 
 export async function updateRule(
   code: string,
-  patch: { isEnabled?: boolean; config?: Record<string, number> },
+  patch: { isEnabled?: boolean; mode?: 'enforce' | 'monitor'; config?: Record<string, number> },
 ) {
   const def = RULE_CATALOG.find((r) => r.code === code);
   if (!def) throw Object.assign(new Error('Unknown rule'), { status: 404, code: 'not_found' });
@@ -245,15 +259,17 @@ export async function updateRule(
     ...(patch.config || {}),
   };
   const isEnabled = patch.isEnabled ?? (existing[0] ? !!existing[0].isEnabled : def.defaultEnabled);
+  const mode = patch.mode ?? (existing[0]?.mode === 'monitor' ? 'monitor' : 'enforce');
   if (existing[0]) {
     await db
       .update(detectionRules)
-      .set({ isEnabled, config: JSON.stringify(config), updatedAt: new Date() })
+      .set({ isEnabled, mode, config: JSON.stringify(config), updatedAt: new Date() })
       .where(eq(detectionRules.code, code));
   } else {
     await db.insert(detectionRules).values({
       code,
       isEnabled,
+      mode,
       priority: def.defaultPriority,
       config: JSON.stringify(config),
       updatedAt: new Date(),

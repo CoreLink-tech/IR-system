@@ -13,7 +13,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ code: string 
     return err(403, 'Forbidden', { code: 'forbidden', requestId: rid });
   }
   const { code } = await ctx.params;
-  let body: { isEnabled?: boolean; config?: Record<string, number> };
+  let body: { isEnabled?: boolean; mode?: 'enforce' | 'monitor'; config?: Record<string, number> };
   try {
     body = await req.json();
   } catch {

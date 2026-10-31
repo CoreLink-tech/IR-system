@@ -1,6 +1,6 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from '@/server/db/client';
-import { apiKeys, events, incidents, ipBlocks, allowlist, ipIntelligence } from '@/server/db/schema';
+import { apiKeys, events, incidents, ipBlocks, allowlist, ipIntelligence, ruleHits } from '@/server/db/schema';
 import { hashApiKey, newId, safeEqual } from '@/server/auth/crypto';
 import { getEnv } from '@/lib/env';
 import { dispatchWebhook } from '@/server/services/webhooks';
@@ -62,7 +62,13 @@ function scrubMetadata(meta: Record<string, unknown> | undefined): string | null
 async function scoreEvent(
   type: string,
   severity: string | undefined,
-  ctx: { ip?: string | null; tenantId?: string | null; userId?: string | null; sessionId?: string | null },
+  ctx: {
+    ip?: string | null;
+    tenantId?: string | null;
+    userId?: string | null;
+    sessionId?: string | null;
+    userAgent?: string | null;
+  },
 ): Promise<{
   riskScore: number;
   riskLevel: string;
@@ -77,145 +83,163 @@ async function scoreEvent(
     countEventsInWindow,
     countDistinctUsersLoginFailed,
     countLogPathHits,
+    countEventsForUser,
+    countEventsForSession,
+    countDistinctLogPaths,
+    hasPriorEventType,
     isOnCooldown,
     bumpEntityScore,
   } = await import('@/server/services/velocity');
   const rules = await getRuleRuntime();
   const matched: string[] = [];
   let riskScore = 0;
-  const add = (code: string, eventTypes: string[]) => {
+
+  const applyBonus = (code: string, points: number) => {
     const r = rules[code];
     if (!r?.enabled) return;
-    if (eventTypes.includes(type)) {
-      riskScore += r.config.baseScore ?? 0;
-      matched.push(code);
-    }
+    matched.push(code);
+    if (r.mode === 'monitor') return;
+    riskScore += points;
   };
-  add('login_failed', ['login_failed']);
-  add('suspicious_request', ['suspicious_request']);
-  add('rate_limit', ['rate_limit_exceeded']);
-  add('payment', ['payment_security_event']);
-  add('admin_access', ['admin_access']);
+
+  const addBase = (code: string, eventTypes: string[]) => {
+    const r = rules[code];
+    if (!r?.enabled) return;
+    if (!eventTypes.includes(type)) return;
+    matched.push(code);
+    if (r.mode === 'monitor') return;
+    riskScore += r.config.baseScore ?? 0;
+  };
+
+  addBase('login_failed', ['login_failed']);
+  addBase('suspicious_request', ['suspicious_request']);
+  addBase('rate_limit', ['rate_limit_exceeded']);
+  addBase('payment', ['payment_security_event']);
+  addBase('admin_access', ['admin_access']);
   if (severity === 'CRITICAL') riskScore += 30;
   else if (severity === 'HIGH') riskScore += 20;
   else if (severity === 'MEDIUM') riskScore += 10;
 
-  // Phase 2 velocity / sequence-lite signals (DB window counts)
   if (ctx.ip) {
-    const spray = rules['password_spray'];
-    if (spray?.enabled && type === 'login_failed' && (ctx as { userId?: string }).userId) {
-      const { countEventsForUser } = await import('@/server/services/velocity');
-      const n = await countEventsForUser({
-        userId: (ctx as { userId: string }).userId,
-        eventType: 'login_failed',
-        windowMinutes: spray.config.windowMinutes ?? 60,
-      });
-      if (n + 1 >= (spray.config.threshold ?? 10)) {
-        riskScore += spray.config.bonusScore ?? 20;
-        matched.push('password_spray');
-      }
-    }
-    const checkout = rules['checkout_abuse'];
-    if (checkout?.enabled && type === 'payment_security_event') {
-      const n = await countEventsInWindow({
-        ip: ctx.ip,
-        eventType: 'payment_security_event',
-        windowMinutes: checkout.config.windowMinutes ?? 10,
-      });
-      if (n + 1 >= (checkout.config.threshold ?? 4)) {
-        riskScore += checkout.config.bonusScore ?? 30;
-        matched.push('checkout_abuse');
-      }
-    }
-        const bf = rules['brute_force'];
-    if (bf?.enabled && type === 'login_failed') {
-      const n = await countEventsInWindow({
-        ip: ctx.ip,
-        eventType: 'login_failed',
-        windowMinutes: bf.config.windowMinutes ?? 15,
-      });
-      // +1 for current event not yet inserted
-      if (n + 1 >= (bf.config.threshold ?? 5)) {
-        riskScore += bf.config.bonusScore ?? 25;
-        matched.push('brute_force');
-      }
-    }
-    const cs = rules['credential_stuffing'];
-    if (cs?.enabled && type === 'login_failed') {
-      const users = await countDistinctUsersLoginFailed({
-        ip: ctx.ip,
-        windowMinutes: cs.config.windowMinutes ?? 30,
-      });
-      if (users >= (cs.config.distinctUsers ?? 8)) {
-        riskScore += cs.config.bonusScore ?? 35;
-        matched.push('credential_stuffing');
-      }
-    }
-    const wp = rules['wp_probe'];
-    if (wp?.enabled && ctx.tenantId) {
-      const hits =
-        (await countLogPathHits({
-          tenantId: ctx.tenantId,
+    if (type === 'login_failed') {
+      const bf = rules['brute_force'];
+      if (bf?.enabled) {
+        const n = await countEventsInWindow({
           ip: ctx.ip,
-          pathSubstring: 'wp-login',
-          windowMinutes: wp.config.windowMinutes ?? 10,
-        })) +
-        (await countLogPathHits({
-          tenantId: ctx.tenantId,
+          eventType: 'login_failed',
+          windowMinutes: bf.config.windowMinutes ?? 15,
+        });
+        if (n + 1 >= (bf.config.threshold ?? 5)) {
+          applyBonus('brute_force', bf.config.bonusScore ?? 25);
+        }
+      }
+      const cs = rules['credential_stuffing'];
+      if (cs?.enabled) {
+        const users = await countDistinctUsersLoginFailed({
           ip: ctx.ip,
-          pathSubstring: 'xmlrpc.php',
-          windowMinutes: wp.config.windowMinutes ?? 10,
-        }));
-      if (hits >= (wp.config.threshold ?? 10)) {
-        riskScore += wp.config.bonusScore ?? 30;
-        matched.push('wp_probe');
+          windowMinutes: cs.config.windowMinutes ?? 30,
+        });
+        if (users >= (cs.config.distinctUsers ?? 8)) {
+          applyBonus('credential_stuffing', cs.config.bonusScore ?? 35);
+        }
+      }
+      if (ctx.userId) {
+        const spray = rules['password_spray'];
+        if (spray?.enabled) {
+          const n = await countEventsForUser({
+            userId: ctx.userId,
+            eventType: 'login_failed',
+            windowMinutes: spray.config.windowMinutes ?? 60,
+          });
+          if (n + 1 >= (spray.config.threshold ?? 10)) {
+            applyBonus('password_spray', spray.config.bonusScore ?? 20);
+          }
+        }
       }
     }
 
-    // Sequence-style rules
-    const adminFails = rules['admin_after_fails'];
-    if (adminFails?.enabled && type === 'admin_access' && ctx.ip) {
-      const { hasPriorEventType } = await import('@/server/services/velocity');
-      if (await hasPriorEventType({ ip: ctx.ip, eventType: 'login_failed', windowMinutes: adminFails.config.windowMinutes ?? 30 })) {
-        riskScore += adminFails.config.bonusScore ?? 35;
-        matched.push('admin_after_fails');
+    if (type === 'payment_security_event') {
+      const checkout = rules['checkout_abuse'];
+      if (checkout?.enabled) {
+        const n = await countEventsInWindow({
+          ip: ctx.ip,
+          eventType: 'payment_security_event',
+          windowMinutes: checkout.config.windowMinutes ?? 10,
+        });
+        if (n + 1 >= (checkout.config.threshold ?? 4)) {
+          applyBonus('checkout_abuse', checkout.config.bonusScore ?? 30);
+        }
       }
     }
-    const resetFails = rules['reset_after_fails'];
-    if (resetFails?.enabled && type === 'password_reset' && ctx.ip) {
-      const { hasPriorEventType } = await import('@/server/services/velocity');
-      if (await hasPriorEventType({ ip: ctx.ip, eventType: 'login_failed', windowMinutes: resetFails.config.windowMinutes ?? 60 })) {
-        riskScore += resetFails.config.bonusScore ?? 30;
-        matched.push('reset_after_fails');
+
+    if (ctx.tenantId) {
+      const wp = rules['wp_probe'];
+      if (wp?.enabled) {
+        const hits =
+          (await countLogPathHits({
+            tenantId: ctx.tenantId,
+            ip: ctx.ip,
+            pathSubstring: 'wp-login',
+            windowMinutes: wp.config.windowMinutes ?? 10,
+          })) +
+          (await countLogPathHits({
+            tenantId: ctx.tenantId,
+            ip: ctx.ip,
+            pathSubstring: 'xmlrpc.php',
+            windowMinutes: wp.config.windowMinutes ?? 10,
+          }));
+        if (hits >= (wp.config.threshold ?? 10)) {
+          applyBonus('wp_probe', wp.config.bonusScore ?? 30);
+        }
+      }
+      const pathScan = rules['path_scan'];
+      if (pathScan?.enabled) {
+        const paths = await countDistinctLogPaths({
+          tenantId: ctx.tenantId,
+          ip: ctx.ip,
+          windowMinutes: pathScan.config.windowMinutes ?? 10,
+        });
+        if (paths >= (pathScan.config.distinctPaths ?? 25)) {
+          applyBonus('path_scan', pathScan.config.bonusScore ?? 25);
+        }
       }
     }
-    const sess = rules['session_risk'];
-    if (sess?.enabled && ctx.sessionId) {
-      const { countEventsForSession } = await import('@/server/services/velocity');
-      const n = await countEventsForSession({
-        sessionId: ctx.sessionId,
-        windowMinutes: sess.config.windowMinutes ?? 15,
-      });
-      if (n + 1 >= (sess.config.threshold ?? 8)) {
-        riskScore += sess.config.bonusScore ?? 25;
-        matched.push('session_risk');
+
+    if (type === 'admin_access') {
+      const adminFails = rules['admin_after_fails'];
+      if (adminFails?.enabled) {
+        if (
+          await hasPriorEventType({
+            ip: ctx.ip,
+            eventType: 'login_failed',
+            windowMinutes: adminFails.config.windowMinutes ?? 30,
+          })
+        ) {
+          applyBonus('admin_after_fails', adminFails.config.bonusScore ?? 35);
+        }
       }
-      await bumpEntityScore({
-        tenantId: ctx.tenantId,
-        entityType: 'session',
-        entityKey: ctx.sessionId,
-        delta: 5,
-      });
+      const off = rules['off_hours_admin'];
+      if (off?.enabled) {
+        const hour = new Date().getUTCHours();
+        const start = off.config.startHourUtc ?? 22;
+        const end = off.config.endHourUtc ?? 5;
+        const isOff = start > end ? hour >= start || hour < end : hour >= start && hour < end;
+        if (isOff) applyBonus('off_hours_admin', off.config.bonusScore ?? 15);
+      }
     }
-    const off = rules['off_hours_admin'];
-    if (off?.enabled && type === 'admin_access') {
-      const hour = new Date().getUTCHours();
-      const start = off.config.startHourUtc ?? 22;
-      const end = off.config.endHourUtc ?? 5;
-      const isOff = start > end ? hour >= start || hour < end : hour >= start && hour < end;
-      if (isOff) {
-        riskScore += off.config.bonusScore ?? 15;
-        matched.push('off_hours_admin');
+
+    if (type === 'password_reset') {
+      const resetFails = rules['reset_after_fails'];
+      if (resetFails?.enabled) {
+        if (
+          await hasPriorEventType({
+            ip: ctx.ip,
+            eventType: 'login_failed',
+            windowMinutes: resetFails.config.windowMinutes ?? 60,
+          })
+        ) {
+          applyBonus('reset_after_fails', resetFails.config.bonusScore ?? 30);
+        }
       }
     }
 
@@ -223,19 +247,48 @@ async function scoreEvent(
       tenantId: ctx.tenantId,
       entityType: 'ip',
       entityKey: ctx.ip,
-      delta: Math.min(15, Math.floor(riskScore / 10)),
+      delta: Math.min(15, Math.floor(riskScore / 10) || 1),
     });
     if (entity >= 60 && !matched.includes('entity_ip_elevated')) {
-      riskScore = Math.min(100, riskScore + 10);
-      matched.push('entity_ip_elevated');
+      applyBonus('entity_ip_elevated', 10);
     }
+  }
+
+  if (ctx.sessionId) {
+    const sess = rules['session_risk'];
+    if (sess?.enabled) {
+      const n = await countEventsForSession({
+        sessionId: ctx.sessionId,
+        windowMinutes: sess.config.windowMinutes ?? 15,
+      });
+      if (n + 1 >= (sess.config.threshold ?? 8)) {
+        applyBonus('session_risk', sess.config.bonusScore ?? 25);
+      }
+    }
+    await bumpEntityScore({
+      tenantId: ctx.tenantId,
+      entityType: 'session',
+      entityKey: ctx.sessionId,
+      delta: 5,
+    });
+  }
+
+  if (ctx.userAgent) {
+    const { createHash } = await import('crypto');
+    const deviceKey = createHash('sha256').update(ctx.userAgent).digest('hex').slice(0, 16);
+    await bumpEntityScore({
+      tenantId: ctx.tenantId,
+      entityType: 'device',
+      entityKey: deviceKey,
+      delta: 3,
+    });
   }
 
   riskScore = Math.min(100, riskScore);
   const riskLevel =
     riskScore >= 85 ? 'CRITICAL' : riskScore >= 60 ? 'HIGH' : riskScore >= 30 ? 'SUSPICIOUS' : 'NORMAL';
   const ab = rules['auto_block'];
-  const autoBlockThreshold = ab?.enabled ? (ab.config.threshold ?? 70) : 999;
+  const autoBlockThreshold = ab?.enabled && ab.mode !== 'monitor' ? (ab.config.threshold ?? 70) : 999;
   const blockMinutes = ab?.config.blockMinutes ?? 60;
   const incidentThreshold = 35;
   let skipAutoBlock = false;
@@ -343,7 +396,7 @@ export async function ingestEvent(apiKeyId: string, body: IngestBody, tenantId?:
 
   const resolvedTenant = tenantId || (await ensureDefaultTenant());
   const { riskScore, riskLevel, matched, autoBlockThreshold, blockMinutes, incidentThreshold, skipAutoBlock } =
-    await scoreEvent(body.event_type, body.severity, { ip: body.ip_address, tenantId: resolvedTenant, userId: body.user_id, sessionId: body.session_id });
+    await scoreEvent(body.event_type, body.severity, { ip: body.ip_address, tenantId: resolvedTenant, userId: body.user_id, sessionId: body.session_id, userAgent: body.user_agent });
   const eventId = newId();
   const occurredAt = body.timestamp ? new Date(body.timestamp) : new Date();
 
@@ -371,6 +424,27 @@ export async function ingestEvent(apiKeyId: string, body: IngestBody, tenantId?:
     occurredAt,
     createdAt: new Date(),
   });
+
+
+  // Record rule hits for precision tracking (best-effort)
+  try {
+    const { getRuleRuntime } = await import('@/server/services/rules');
+    const rt = await getRuleRuntime();
+    for (const code of matched) {
+      await db.insert(ruleHits).values({
+        id: newId(),
+        tenantId: resolvedTenant,
+        ruleCode: code,
+        entityKey: body.ip_address ? `ip:${body.ip_address}` : null,
+        eventId,
+        incidentId: null,
+        mode: rt[code]?.mode === 'monitor' ? 'monitor' : 'enforce',
+        createdAt: new Date(),
+      });
+    }
+  } catch (e) {
+    console.error('rule hit log failed', e);
+  }
 
   let incidentId: string | null = null;
 

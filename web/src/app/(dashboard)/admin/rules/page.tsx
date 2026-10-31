@@ -8,6 +8,7 @@ type Rule = {
   title: string;
   description: string;
   isEnabled: boolean;
+  mode?: 'enforce' | 'monitor';
   config: Record<string, number>;
   limits: Record<string, { min: number; max: number }>;
 };
@@ -148,14 +149,37 @@ export default function RulesPage() {
                   ))}
                 </div>
               </div>
-              <button
-                type="button"
-                disabled={busy === r.code}
-                className={`btn text-[11px] ${r.isEnabled ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => void toggle(r.code, !r.isEnabled)}
-              >
-                {busy === r.code ? '…' : r.isEnabled ? 'Enabled' : 'Disabled'}
-              </button>
+              <div className="flex flex-col gap-1">
+                <button
+                  type="button"
+                  disabled={busy === r.code}
+                  className={`btn text-[11px] ${r.isEnabled ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => void toggle(r.code, !r.isEnabled)}
+                >
+                  {busy === r.code ? '…' : r.isEnabled ? 'Enabled' : 'Disabled'}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy === r.code}
+                  className="btn btn-secondary text-[10px]"
+                  onClick={async () => {
+                    setBusy(r.code);
+                    try {
+                      await api(`/rules/${r.code}`, {
+                        method: 'PATCH',
+                        json: { mode: r.mode === 'monitor' ? 'enforce' : 'monitor' },
+                      });
+                      await load();
+                    } catch (e: unknown) {
+                      setError(e instanceof ApiError ? e.message : 'Failed');
+                    } finally {
+                      setBusy(null);
+                    }
+                  }}
+                >
+                  Mode: {r.mode === 'monitor' ? 'monitor' : 'enforce'}
+                </button>
+              </div>
             </div>
           </div>
         ))}
