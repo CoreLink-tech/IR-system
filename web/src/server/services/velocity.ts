@@ -127,3 +127,22 @@ export async function bumpEntityScore(opts: {
   });
   return score;
 }
+
+export async function countEventsForUser(opts: {
+  userId: string;
+  eventType: string;
+  windowMinutes: number;
+}): Promise<number> {
+  const since = new Date(Date.now() - opts.windowMinutes * 60_000);
+  const rows = await db
+    .select({ c: sql<number>`count(*)` })
+    .from(events)
+    .where(
+      and(
+        eq(events.userId, opts.userId),
+        eq(events.eventType, opts.eventType),
+        gte(events.createdAt, since),
+      ),
+    );
+  return Number(rows[0]?.c ?? 0);
+}

@@ -59,6 +59,32 @@ export const RULE_CATALOG: RuleDef[] = [
     limits: { baseScore: { min: 0, max: 100 } },
   },
   {
+    code: 'password_spray',
+    title: 'Password spray signal',
+    description: 'Elevated login_failed volume across many IPs is out of scope; this flags high fail count for one user_id across IPs is simplified to high fails for one user.',
+    defaultEnabled: true,
+    defaultPriority: 48,
+    defaultConfig: { windowMinutes: 60, threshold: 10, bonusScore: 20 },
+    limits: {
+      windowMinutes: { min: 5, max: 1440 },
+      threshold: { min: 3, max: 100 },
+      bonusScore: { min: 0, max: 60 },
+    },
+  },
+  {
+    code: 'checkout_abuse',
+    title: 'Checkout / payment burst',
+    description: 'Multiple payment_security_event from one IP in a short window.',
+    defaultEnabled: true,
+    defaultPriority: 42,
+    defaultConfig: { windowMinutes: 10, threshold: 4, bonusScore: 30 },
+    limits: {
+      windowMinutes: { min: 1, max: 120 },
+      threshold: { min: 2, max: 50 },
+      bonusScore: { min: 0, max: 80 },
+    },
+  },
+  {
     code: 'brute_force',
     title: 'Brute force (velocity)',
     description: 'Raises risk when login_failed count from one IP exceeds threshold in a window.',

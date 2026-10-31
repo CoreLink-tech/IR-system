@@ -62,7 +62,7 @@ function scrubMetadata(meta: Record<string, unknown> | undefined): string | null
 async function scoreEvent(
   type: string,
   severity: string | undefined,
-  ctx: { ip?: string | null; tenantId?: string | null },
+  ctx: { ip?: string | null; tenantId?: string | null; userId?: string | null },
 ): Promise<{
   riskScore: number;
   riskLevel: string;
@@ -102,7 +102,32 @@ async function scoreEvent(
 
   // Phase 2 velocity / sequence-lite signals (DB window counts)
   if (ctx.ip) {
-    const bf = rules['brute_force'];
+    const spray = rules['password_spray'];
+    if (spray?.enabled && type === 'login_failed' && (ctx as { userId?: string }).userId) {
+      const { countEventsForUser } = await import('@/server/services/velocity');
+      const n = await countEventsForUser({
+        userId: (ctx as { userId: string }).userId,
+        eventType: 'login_failed',
+        windowMinutes: spray.config.windowMinutes ?? 60,
+      });
+      if (n + 1 >= (spray.config.threshold ?? 10)) {
+        riskScore += spray.config.bonusScore ?? 20;
+        matched.push('password_spray');
+      }
+    }
+    const checkout = rules['checkout_abuse'];
+    if (checkout?.enabled && type === 'payment_security_event') {
+      const n = await countEventsInWindow({
+        ip: ctx.ip,
+        eventType: 'payment_security_event',
+        windowMinutes: checkout.config.windowMinutes ?? 10,
+      });
+      if (n + 1 >= (checkout.config.threshold ?? 4)) {
+        riskScore += checkout.config.bonusScore ?? 30;
+        matched.push('checkout_abuse');
+      }
+    }
+        const bf = rules['brute_force'];
     if (bf?.enabled && type === 'login_failed') {
       const n = await countEventsInWindow({
         ip: ctx.ip,
@@ -270,7 +295,7 @@ export async function ingestEvent(apiKeyId: string, body: IngestBody, tenantId?:
 
   const resolvedTenant = tenantId || (await ensureDefaultTenant());
   const { riskScore, riskLevel, matched, autoBlockThreshold, blockMinutes, incidentThreshold, skipAutoBlock } =
-    await scoreEvent(body.event_type, body.severity, { ip: body.ip_address, tenantId: resolvedTenant });
+    await scoreEvent(body.event_type, body.severity, { ip: body.ip_address, tenantId: resolvedTenant, userId: body.user_id });
   const eventId = newId();
   const occurredAt = body.timestamp ? new Date(body.timestamp) : new Date();
 
