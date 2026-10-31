@@ -5,6 +5,7 @@ import { generateApiKey, newId } from '@/server/auth/crypto';
 import { db } from '@/server/db/client';
 import { apiKeys } from '@/server/db/schema';
 import { getEnv } from '@/lib/env';
+import { ensureDefaultTenant } from '@/server/services/tenancy';
 
 export const runtime = 'nodejs';
 
@@ -55,12 +56,15 @@ export async function POST(req: Request) {
       ? new Date(Date.now() + body.expiresInDays * 86400000)
       : null;
   const id = newId();
+  const tenantId = await ensureDefaultTenant();
   await db.insert(apiKeys).values({
     id,
+    tenantId,
     name: body.name.trim(),
     keyPrefix: generated.prefix,
     keyHash: generated.hash,
     scopes,
+    rateLimitPerMinute: 120,
     expiresAt,
     createdBy: me.id,
     createdAt: new Date(),

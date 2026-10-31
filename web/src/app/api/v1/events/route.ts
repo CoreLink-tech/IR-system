@@ -54,7 +54,8 @@ export async function POST(req: Request) {
     return err(403, 'API key lacks events:write scope', { code: 'forbidden', requestId: rid });
   }
 
-  const rl = rateLimit(`ingest:${key.id}:${clientIp(req)}`, 120, 60_000);
+  const limit = key.rateLimitPerMinute && key.rateLimitPerMinute > 0 ? key.rateLimitPerMinute : 120;
+  const rl = rateLimit(`ingest:${key.id}:${clientIp(req)}`, limit, 60_000);
   if (!rl.ok) {
     return err(429, 'Too many events', { code: 'rate_limited', requestId: rid, retryAfterSeconds: rl.retryAfterSeconds });
   }
@@ -71,7 +72,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const result = await ingestEvent(key.id, body);
+    const result = await ingestEvent(key.id, body, key.tenantId);
     return json(result, { requestId: rid });
   } catch (e: unknown) {
     const ex = e as { status?: number; code?: string; message?: string };

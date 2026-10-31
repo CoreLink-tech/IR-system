@@ -3,6 +3,8 @@ import { db } from '@/server/db/client';
 import { apiKeys, events, incidents, ipBlocks, allowlist, ipIntelligence } from '@/server/db/schema';
 import { hashApiKey, newId, safeEqual } from '@/server/auth/crypto';
 import { getEnv } from '@/lib/env';
+import { dispatchWebhook } from '@/server/services/webhooks';
+import { ensureDefaultTenant } from '@/server/services/tenancy';
 
 const EVENT_TYPES = new Set([
   'login_failed',
@@ -119,6 +121,7 @@ async function attachOrCreateIncident(opts: {
   userId?: string | null;
   riskScore: number;
   riskLevel: string;
+  tenantId: string;
 }): Promise<string> {
   const openKey = `ip:${opts.ip}`;
   const existing = await db.select().from(incidents).where(eq(incidents.openKey, openKey)).limit(1);
@@ -140,6 +143,7 @@ async function attachOrCreateIncident(opts: {
   try {
     await db.insert(incidents).values({
       id: incidentId,
+      tenantId: opts.tenantId,
       publicNumber,
       title: `${opts.eventType} from ${opts.ip}`,
       status: 'OPEN',
@@ -171,7 +175,7 @@ async function attachOrCreateIncident(opts: {
   }
 }
 
-export async function ingestEvent(apiKeyId: string, body: IngestBody) {
+export async function ingestEvent(apiKeyId: string, body: IngestBody, tenantId?: string | null) {
   if (!EVENT_TYPES.has(body.event_type)) {
     throw Object.assign(new Error('Invalid event_type'), { status: 400, code: 'invalid_event_type' });
   }
@@ -199,8 +203,11 @@ export async function ingestEvent(apiKeyId: string, body: IngestBody) {
   const occurredAt = body.timestamp ? new Date(body.timestamp) : new Date();
 
   // Persist event first so incident/block failures cannot drop evidence
+  const resolvedTenant = tenantId || (await ensureDefaultTenant());
+
   await db.insert(events).values({
     id: eventId,
+    tenantId: resolvedTenant,
     apiKeyId,
     externalId: body.event_id || null,
     eventType: body.event_type,
@@ -231,8 +238,15 @@ export async function ingestEvent(apiKeyId: string, body: IngestBody) {
         userId: body.user_id,
         riskScore,
         riskLevel,
+        tenantId: resolvedTenant,
       });
       await db.update(events).set({ incidentId }).where(eq(events.id, eventId));
+      void dispatchWebhook(resolvedTenant, 'incident.created', {
+        incident_id: incidentId,
+        ip: body.ip_address,
+        event_type: body.event_type,
+        risk_score: riskScore,
+      });
     } catch (e) {
       console.error('incident attach failed; event retained', eventId, e);
     }
@@ -255,6 +269,7 @@ export async function ingestEvent(apiKeyId: string, body: IngestBody) {
             const expires = new Date(Date.now() + blockMinutes * 60 * 1000);
             await db.insert(ipBlocks).values({
               id: newId(),
+              tenantId: resolvedTenant,
               ipAddress: body.ip_address,
               action: 'BLOCK',
               reason: `Automatic: risk ${riskScore} (${matched.join(', ')})`,
@@ -265,6 +280,11 @@ export async function ingestEvent(apiKeyId: string, body: IngestBody) {
               automatic: true,
               activeKey,
               createdAt: new Date(),
+            });
+            void dispatchWebhook(resolvedTenant, 'block.created', {
+              ip: body.ip_address,
+              reason: `Automatic: risk ${riskScore}`,
+              incident_id: incidentId,
             });
           }
         }

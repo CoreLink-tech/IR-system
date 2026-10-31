@@ -67,6 +67,7 @@ export const apiKeys = sqliteTable('api_keys', {
 
 export const events = sqliteTable('events', {
   id: id(),
+  tenantId: text('tenant_id'),
   apiKeyId: text('api_key_id').references(() => apiKeys.id),
   externalId: text('external_id'),
   eventType: text('event_type').notNull(),
@@ -94,6 +95,7 @@ export const events = sqliteTable('events', {
 
 export const incidents = sqliteTable('incidents', {
   id: id(),
+  tenantId: text('tenant_id'),
   publicNumber: integer('public_number').notNull(),
   title: text('title').notNull(),
   status: text('status').notNull().default('OPEN'), // OPEN | INVESTIGATING | CONTAINED | RESOLVED | FALSE_POSITIVE
@@ -116,6 +118,7 @@ export const incidents = sqliteTable('incidents', {
 
 export const ipBlocks = sqliteTable('ip_blocks', {
   id: id(),
+  tenantId: text('tenant_id'),
   ipAddress: text('ip_address').notNull(),
   action: text('action').notNull().default('BLOCK'), // BLOCK | UNBLOCK
   reason: text('reason').notNull(),
@@ -134,6 +137,7 @@ export const ipBlocks = sqliteTable('ip_blocks', {
 
 export const allowlist = sqliteTable('allowlist', {
   id: id(),
+  tenantId: text('tenant_id'),
   ipAddress: text('ip_address').notNull().unique(),
   reason: text('reason').notNull(),
   addedBy: text('added_by'),
@@ -193,3 +197,77 @@ export const detectionRules = sqliteTable('detection_rules', {
   config: text('config').notNull().default('{}'), // JSON
   updatedAt: tsNull('updated_at'),
 });
+
+
+export const tenants = sqliteTable('tenants', {
+  id: id(),
+  name: text('name').notNull(),
+  slug: text('slug').notNull().unique(),
+  plan: text('plan').notNull().default('pilot'),
+  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+  createdAt: ts('created_at').default(sql`(unixepoch() * 1000)`),
+});
+
+export const tenantMembers = sqliteTable('tenant_members', {
+  id: id(),
+  tenantId: text('tenant_id').notNull(),
+  userId: text('user_id').notNull(),
+  role: text('role').notNull().default('VIEWER'),
+  createdAt: ts('created_at').default(sql`(unixepoch() * 1000)`),
+}, (t) => [index('tenant_members_user_idx').on(t.userId), index('tenant_members_tenant_idx').on(t.tenantId)]);
+
+export const stores = sqliteTable('stores', {
+  id: id(),
+  tenantId: text('tenant_id').notNull(),
+  name: text('name').notNull(),
+  platform: text('platform'),
+  createdAt: ts('created_at').default(sql`(unixepoch() * 1000)`),
+}, (t) => [index('stores_tenant_idx').on(t.tenantId)]);
+
+export const webhooks = sqliteTable('webhooks', {
+  id: id(),
+  tenantId: text('tenant_id').notNull(),
+  url: text('url').notNull(),
+  secret: text('secret').notNull(),
+  events: text('events').notNull().default('incident.created,block.created'),
+  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+  createdAt: ts('created_at').default(sql`(unixepoch() * 1000)`),
+}, (t) => [index('webhooks_tenant_idx').on(t.tenantId)]);
+
+export const webhookDeliveries = sqliteTable('webhook_deliveries', {
+  id: id(),
+  webhookId: text('webhook_id').notNull(),
+  eventType: text('event_type').notNull(),
+  payload: text('payload').notNull(),
+  statusCode: integer('status_code'),
+  success: integer('success', { mode: 'boolean' }).notNull().default(false),
+  attempts: integer('attempts').notNull().default(0),
+  lastError: text('last_error'),
+  createdAt: ts('created_at').default(sql`(unixepoch() * 1000)`),
+}, (t) => [index('webhook_deliveries_webhook_idx').on(t.webhookId)]);
+
+export const incidentNotes = sqliteTable('incident_notes', {
+  id: id(),
+  incidentId: text('incident_id').notNull(),
+  authorId: text('author_id'),
+  body: text('body').notNull(),
+  createdAt: ts('created_at').default(sql`(unixepoch() * 1000)`),
+}, (t) => [index('incident_notes_incident_idx').on(t.incidentId)]);
+
+export const logEntries = sqliteTable('log_entries', {
+  id: id(),
+  tenantId: text('tenant_id').notNull(),
+  source: text('source').notNull().default('https'),
+  severity: text('severity'),
+  message: text('message').notNull(),
+  ipAddress: text('ip_address'),
+  path: text('path'),
+  method: text('method'),
+  statusCode: integer('status_code'),
+  userAgent: text('user_agent'),
+  raw: text('raw'),
+  createdAt: ts('created_at').default(sql`(unixepoch() * 1000)`),
+}, (t) => [
+  index('log_entries_tenant_created_idx').on(t.tenantId, t.createdAt),
+  index('log_entries_ip_idx').on(t.ipAddress),
+]);
