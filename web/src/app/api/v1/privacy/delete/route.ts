@@ -34,7 +34,7 @@ export async function POST(req: Request) {
 
   if (body.user_id) {
     if (body.hard) {
-      const r = await db.delete(events).where(eq(events.userId, body.user_id));
+      await db.delete(events).where(eq(events.userId, body.user_id));
       eventsTouched = 1;
       await db.delete(decisions).where(eq(decisions.userId, body.user_id));
       decisionsTouched = 1;

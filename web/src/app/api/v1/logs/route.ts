@@ -7,7 +7,7 @@ import { logEntries } from '@/server/db/schema';
 import { verifyApiKey } from '@/server/services/events';
 import { ensureDefaultTenant } from '@/server/services/tenancy';
 import { rateLimitAsync } from '@/server/services/rate-limit';
-import { redactJsonValue, redactText } from '@/server/services/redact';
+import { redactJsonValue } from '@/server/services/redact';
 
 export const runtime = 'nodejs';
 

@@ -2,7 +2,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { createHash } from 'crypto';
 import { createClient } from '@libsql/client';
 import { db } from '@/server/db/client';
-import { recoveryCodes, users, usedChallenges, loginThrottle } from '@/server/db/schema';
+import { recoveryCodes, users, loginThrottle } from '@/server/db/schema';
 import { newId, sha256 } from '@/server/auth/crypto';
 import { generateRecoveryCodes, generateTotpSecret, otpauthUri, verifyTotp } from '@/server/auth/totp';
 import { getEnv } from '@/lib/env';

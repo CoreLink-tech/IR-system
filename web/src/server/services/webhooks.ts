@@ -1,7 +1,7 @@
 import { createHmac, randomBytes } from 'crypto';
 import { lookup } from 'dns/promises';
 import { isIP } from 'net';
-import { and, eq, lte } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '@/server/db/client';
 import { webhooks, webhookDeliveries } from '@/server/db/schema';
 import { newId } from '@/server/auth/crypto';

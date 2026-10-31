@@ -23,6 +23,8 @@ export default function ApiKeysPage() {
   const [created, setCreated] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [selectedScopes, setSelectedScopes] = useState<string[]>(['events:write', 'block:read']);
+  const scopeOptions = ['events:write', 'block:read', 'logs:write', 'decide'];
   const [loading, setLoading] = useState(true);
   const [showIntegration, setShowIntegration] = useState(false);
 
@@ -216,6 +218,22 @@ Use the language and framework already present in this codebase.`;
               placeholder="Production shop / Mobile app / Partner site"
               required
             />
+          </div>
+          <div className="mb-3 flex flex-wrap gap-3 text-xs">
+            {scopeOptions.map((s) => (
+              <label key={s} className="inline-flex items-center gap-1">
+                <input
+                  type="checkbox"
+                  checked={selectedScopes.includes(s)}
+                  onChange={(e) =>
+                    setSelectedScopes((prev) =>
+                      e.target.checked ? [...prev, s] : prev.filter((x) => x !== s),
+                    )
+                  }
+                />
+                {s}
+              </label>
+            ))}
           </div>
           <button type="submit" disabled={busy || !name.trim()} className="btn btn-primary">
             {busy ? 'Creating…' : 'Generate key'}

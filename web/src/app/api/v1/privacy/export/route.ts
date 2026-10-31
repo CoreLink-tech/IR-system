@@ -1,8 +1,8 @@
-import { eq, or } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { err, json, requestId, clientIp } from '@/server/api';
 import { requireUser } from '@/server/auth/require-user';
 import { db } from '@/server/db/client';
-import { events, decisions, users, auditLog } from '@/server/db/schema';
+import { events, decisions, users } from '@/server/db/schema';
 import { writeAudit } from '@/server/services/audit';
 
 export const runtime = 'nodejs';
