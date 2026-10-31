@@ -19,7 +19,7 @@ export const RULE_CATALOG: RuleDef[] = [
     description: 'Raises risk when a login_failed event is received.',
     defaultEnabled: true,
     defaultPriority: 100,
-    defaultConfig: { baseScore: 25 },
+    defaultConfig: { baseScore: 30 },
     limits: { baseScore: { min: 0, max: 100 } },
   },
   {
@@ -55,7 +55,7 @@ export const RULE_CATALOG: RuleDef[] = [
     description: 'Scoring for admin_access events.',
     defaultEnabled: true,
     defaultPriority: 110,
-    defaultConfig: { baseScore: 15 },
+    defaultConfig: { baseScore: 45 },
     limits: { baseScore: { min: 0, max: 100 } },
   },
   {
@@ -64,7 +64,7 @@ export const RULE_CATALOG: RuleDef[] = [
     description: 'Block the source IP when risk score reaches this value (private/allowlisted IPs never blocked).',
     defaultEnabled: true,
     defaultPriority: 10,
-    defaultConfig: { threshold: 85, blockMinutes: 60 },
+    defaultConfig: { threshold: 70, blockMinutes: 60 },
     limits: { threshold: { min: 50, max: 100 }, blockMinutes: { min: 5, max: 10080 } },
   },
 ];
