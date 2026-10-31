@@ -44,7 +44,7 @@ export default function ChangePasswordPage() {
         </label>
         <label className="block text-sm">
           New password
-          <input className="mt-1 w-full rounded border px-3 py-2" type="password" required minLength={6} value={newPassword} onChange={(e) => setNew(e.target.value)} />
+          <input className="mt-1 w-full rounded border px-3 py-2" type="password" required minLength={8} value={newPassword} onChange={(e) => setNew(e.target.value)} />
         </label>
         {message && <p className="text-sm text-red-600">{message}</p>}
         <button type="submit" disabled={busy} className="w-full rounded bg-blue-600 px-3 py-2 text-white disabled:opacity-50">

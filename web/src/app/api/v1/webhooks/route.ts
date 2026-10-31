@@ -5,7 +5,7 @@ import { newId } from '@/server/auth/crypto';
 import { db } from '@/server/db/client';
 import { webhooks } from '@/server/db/schema';
 import { ensureDefaultTenant, ensureUserMembership } from '@/server/services/tenancy';
-import { newWebhookSecret } from '@/server/services/webhooks';
+import { newWebhookSecret, assertSafeWebhookUrl } from '@/server/services/webhooks';
 import { writeAudit } from '@/server/services/audit';
 
 export const runtime = 'nodejs';
@@ -45,6 +45,12 @@ export async function POST(req: Request) {
   }
   if (!body.url || !/^https:\/\//i.test(body.url)) {
     return err(400, 'url must be https', { code: 'invalid_body', requestId: rid });
+  }
+  try {
+    await assertSafeWebhookUrl(body.url);
+  } catch (e: unknown) {
+    const ex = e as { status?: number; code?: string; message?: string };
+    return err(ex.status || 400, ex.message || 'Invalid URL', { code: ex.code || 'invalid_url', requestId: rid });
   }
   const tenantId = await ensureDefaultTenant();
   await ensureUserMembership(me.id, tenantId, me.role);

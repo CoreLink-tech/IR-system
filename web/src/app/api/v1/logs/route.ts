@@ -7,32 +7,54 @@ import { logEntries } from '@/server/db/schema';
 import { verifyApiKey } from '@/server/services/events';
 import { ensureDefaultTenant } from '@/server/services/tenancy';
 import { rateLimitAsync } from '@/server/services/rate-limit';
+import { redactText } from '@/server/services/redact';
 
 export const runtime = 'nodejs';
 
+const MAX_BODY = 1_000_000; // 1 MB
+const BATCH = 100;
+
 /**
- * Phase 1 MVP log ingest: NDJSON or JSON array via API key (scope logs:write or *).
- * Storage is Turso — fine for pilot volume; not a long-term log warehouse.
+ * POST /api/v1/logs — NDJSON or JSON array.
+ * Prefer scope logs:write; events:write still accepted (deprecated).
  */
 export async function POST(req: Request) {
   const rid = requestId(req);
   const auth = req.headers.get('authorization') || '';
-  const raw = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
-  if (!raw) return err(401, 'API key required', { code: 'unauthorized', requestId: rid });
-  const key = await verifyApiKey(raw);
+  const rawKey = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
+  if (!rawKey) return err(401, 'API key required', { code: 'unauthorized', requestId: rid });
+
+  const key = await verifyApiKey(rawKey);
   if (!key) return err(401, 'Invalid API key', { code: 'unauthorized', requestId: rid });
+
   const scopes = key.scopes.split(',').map((s) => s.trim());
-  if (!scopes.includes('logs:write') && !scopes.includes('events:write') && !scopes.includes('*')) {
+  const hasLogs = scopes.includes('logs:write') || scopes.includes('*');
+  const hasEvents = scopes.includes('events:write');
+  if (!hasLogs && !hasEvents) {
     return err(403, 'API key lacks logs:write', { code: 'forbidden', requestId: rid });
   }
+
   const limit = key.rateLimitPerMinute && key.rateLimitPerMinute > 0 ? key.rateLimitPerMinute : 120;
   const rl = await rateLimitAsync(`logs:${key.id}`, limit, 60_000);
   if (!rl.ok) {
-    return err(429, 'Too many log batches', { code: 'rate_limited', requestId: rid, retryAfterSeconds: rl.retryAfterSeconds });
+    return err(429, 'Too many log batches', {
+      code: 'rate_limited',
+      requestId: rid,
+      retryAfterSeconds: rl.retryAfterSeconds,
+    });
   }
 
-  const tenantId = key.tenantId || (await ensureDefaultTenant());
-  const text = await req.text();
+  const contentLength = Number(req.headers.get('content-length') || 0);
+  if (contentLength > MAX_BODY) {
+    return err(413, 'Body too large (max 1MB)', { code: 'payload_too_large', requestId: rid });
+  }
+
+  const buf = Buffer.from(await req.arrayBuffer());
+  if (buf.byteLength > MAX_BODY) {
+    return err(413, 'Body too large (max 1MB)', { code: 'payload_too_large', requestId: rid });
+  }
+  const text = buf.toString('utf8');
+
   const lines: unknown[] = [];
   try {
     const parsed = JSON.parse(text);
@@ -52,11 +74,15 @@ export async function POST(req: Request) {
     return err(400, 'Max 500 log lines per request', { code: 'batch_too_large', requestId: rid });
   }
 
-  let inserted = 0;
-  for (const item of lines) {
+  const tenantId = key.tenantId || (await ensureDefaultTenant());
+  const redactEmails = true; // tenant setting default on
+  const values = lines.map((item) => {
     const o = (item && typeof item === 'object' ? item : { message: String(item) }) as Record<string, unknown>;
-    const message = String(o.message || o.msg || o.log || JSON.stringify(o)).slice(0, 8000);
-    await db.insert(logEntries).values({
+    const message = redactText(String(o.message || o.msg || o.log || JSON.stringify(o)).slice(0, 8000), {
+      redactEmails,
+    });
+    const raw = redactText(JSON.stringify(o).slice(0, 16000), { redactEmails });
+    return {
       id: newId(),
       tenantId,
       source: String(o.source || 'https'),
@@ -67,12 +93,22 @@ export async function POST(req: Request) {
       method: o.method ? String(o.method) : null,
       statusCode: typeof o.status === 'number' ? o.status : typeof o.status_code === 'number' ? o.status_code : null,
       userAgent: o.user_agent ? String(o.user_agent) : null,
-      raw: JSON.stringify(o).slice(0, 16000),
+      raw,
       createdAt: new Date(),
-    });
-    inserted += 1;
+    };
+  });
+
+  for (let i = 0; i < values.length; i += BATCH) {
+    await db.insert(logEntries).values(values.slice(i, i + BATCH));
   }
-  return json({ inserted }, { requestId: rid });
+
+  const headers: Record<string, string> = {};
+  if (!hasLogs && hasEvents) {
+    // TODO(remove after 2026-12-30): stop accepting events:write for log ingest
+    headers['Deprecation'] = 'true';
+  }
+
+  return json({ inserted: values.length }, { requestId: rid, headers });
 }
 
 export async function GET(req: Request) {

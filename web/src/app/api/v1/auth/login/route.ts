@@ -1,11 +1,21 @@
 import { cookies } from 'next/headers';
 import { clientIp, err, json, requestId } from '@/server/api';
+import { rateLimitAsync } from '@/server/services/rate-limit';
 import { loginWithPassword } from '@/server/auth/session';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: Request) {
   const rid = requestId(req);
+  const rl = await rateLimitAsync(`auth:login:${clientIp(req)}`, 20, 60_000);
+  if (!rl.ok) {
+    return err(429, 'Too many login attempts', {
+      code: 'rate_limited',
+      requestId: rid,
+      retryAfterSeconds: rl.retryAfterSeconds,
+    });
+  }
+
   let body: { email?: string; password?: string; useCookie?: boolean };
   try {
     body = await req.json();

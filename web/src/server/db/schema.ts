@@ -53,11 +53,13 @@ export const refreshTokens = sqliteTable('refresh_tokens', {
 
 export const apiKeys = sqliteTable('api_keys', {
   id: id(),
+  tenantId: text('tenant_id'),
   name: text('name').notNull(),
   keyPrefix: text('key_prefix').notNull(),
   keyHash: text('key_hash').notNull(),
   scopes: text('scopes').notNull().default('events:write'), // comma-separated
   isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+  rateLimitPerMinute: integer('rate_limit_per_minute').default(120),
   expiresAt: tsNull('expires_at'),
   lastUsedAt: tsNull('last_used_at'),
   revokedAt: tsNull('revoked_at'),
@@ -182,6 +184,7 @@ export const auditLog = sqliteTable('audit_log', {
   metadata: text('metadata'),
   ipAddress: text('ip_address'),
   userAgent: text('user_agent'),
+  tenantId: text('tenant_id'),
   createdAt: ts('created_at').default(sql`(unixepoch() * 1000)`),
 }, (t) => [index('audit_log_created_idx').on(t.createdAt), index('audit_log_action_idx').on(t.action)]);
 
@@ -247,8 +250,14 @@ export const webhookDeliveries = sqliteTable('webhook_deliveries', {
   success: integer('success', { mode: 'boolean' }).notNull().default(false),
   attempts: integer('attempts').notNull().default(0),
   lastError: text('last_error'),
+  nextAttemptAt: tsNull('next_attempt_at'),
+  dead: integer('dead', { mode: 'boolean' }).notNull().default(false),
+  eventId: text('event_id'),
   createdAt: ts('created_at').default(sql`(unixepoch() * 1000)`),
-}, (t) => [index('webhook_deliveries_webhook_idx').on(t.webhookId)]);
+}, (t) => [
+  index('webhook_deliveries_webhook_idx').on(t.webhookId),
+  index('webhook_deliveries_next_idx').on(t.nextAttemptAt),
+]);
 
 export const incidentNotes = sqliteTable('incident_notes', {
   id: id(),
@@ -345,3 +354,11 @@ export const decisions = sqliteTable('decisions', {
   index('decisions_created_idx').on(t.createdAt),
   index('decisions_ip_idx').on(t.ipAddress),
 ]);
+
+export const usedChallenges = sqliteTable('used_challenges', {
+  jti: text('jti').primaryKey(),
+  userId: text('user_id'),
+  failures: integer('failures').notNull().default(0),
+  burnedAt: tsNull('burned_at'),
+  createdAt: ts('created_at').default(sql`(unixepoch() * 1000)`),
+}, (t) => [index('used_challenges_user_idx').on(t.userId)]);

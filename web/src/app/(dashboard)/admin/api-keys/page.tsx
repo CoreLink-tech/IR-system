@@ -45,7 +45,7 @@ export default function ApiKeysPage() {
     try {
       const r = await api<{ apiKey: string }>('/api-keys', {
         method: 'POST',
-        json: { name: name.trim(), scopes: ['events:write', 'block:read'] },
+        json: { name: name.trim(), scopes: ['events:write', 'block:read', 'logs:write', 'decide'] },
       });
       setCreated(r.apiKey);
       setName('');

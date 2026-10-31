@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { compareSync } from 'bcryptjs';
 import { db } from '@/server/db/client';
 import { users, refreshTokens, loginThrottle } from '@/server/db/schema';
@@ -23,16 +23,38 @@ export async function checkLockout(email: string): Promise<number | null> {
 }
 
 export async function recordFailure(email: string): Promise<number | null> {
-  const key = loginKey(email);
+  return recordThrottleFailure(loginKey(email));
+}
+
+/** Atomic windowed failure counter for login or MFA keys. */
+export async function recordThrottleFailure(key: string): Promise<number | null> {
+  const now = Date.now();
+  const windowMs = 15 * 60 * 1000;
+  await db
+    .insert(loginThrottle)
+    .values({
+      keyHash: key,
+      failures: 1,
+      lockedUntil: null,
+      updatedAt: new Date(now),
+    })
+    .onConflictDoUpdate({
+      target: loginThrottle.keyHash,
+      set: {
+        failures: sql`CASE WHEN (${now} - ${loginThrottle.updatedAt}) > ${windowMs} THEN 1 ELSE ${loginThrottle.failures} + 1 END`,
+        lockedUntil: sql`CASE
+          WHEN (${now} - ${loginThrottle.updatedAt}) > ${windowMs} THEN NULL
+          WHEN ${loginThrottle.failures} + 1 >= ${LOCKOUT_THRESHOLD} THEN ${now + LOCKOUT_MS}
+          ELSE NULL
+        END`,
+        updatedAt: new Date(now),
+      },
+    });
   const rows = await db.select().from(loginThrottle).where(eq(loginThrottle.keyHash, key)).limit(1);
-  const failures = (rows[0]?.failures || 0) + 1;
-  const lockedUntil = failures >= LOCKOUT_THRESHOLD ? new Date(Date.now() + LOCKOUT_MS) : null;
-  if (rows[0]) {
-    await db.update(loginThrottle).set({ failures, lockedUntil, updatedAt: new Date() }).where(eq(loginThrottle.keyHash, key));
-  } else {
-    await db.insert(loginThrottle).values({ keyHash: key, failures, lockedUntil, updatedAt: new Date() });
+  const row = rows[0];
+  if (row?.lockedUntil && row.lockedUntil.getTime() > now) {
+    return Math.ceil((row.lockedUntil.getTime() - now) / 1000);
   }
-  if (lockedUntil) return Math.ceil(LOCKOUT_MS / 1000);
   return null;
 }
 

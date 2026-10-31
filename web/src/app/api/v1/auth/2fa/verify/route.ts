@@ -1,11 +1,21 @@
 import { cookies } from 'next/headers';
 import { clientIp, err, json, requestId } from '@/server/api';
+import { rateLimitAsync } from '@/server/services/rate-limit';
 import { verifyMfaAndLogin } from '@/server/auth/two-factor';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: Request) {
   const rid = requestId(req);
+  const rl = await rateLimitAsync(`auth:2fa:${clientIp(req)}`, 10, 60_000);
+  if (!rl.ok) {
+    return err(429, 'Too many MFA attempts', {
+      code: 'rate_limited',
+      requestId: rid,
+      retryAfterSeconds: rl.retryAfterSeconds,
+    });
+  }
+
   let body: { challengeToken?: string; code?: string; recoveryCode?: string };
   try {
     body = await req.json();

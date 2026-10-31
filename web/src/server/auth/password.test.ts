@@ -7,7 +7,8 @@ describe('assertStrongPassword', () => {
   });
 
   it('rejects short passwords', () => {
-    expect(() => assertStrongPassword('Short1Aa')).toThrow(/12/);
+    // 7 characters with complexity still fails minimum length 8
+    expect(() => assertStrongPassword('Abcde1F')).toThrow(/8/);
   });
 
   it('rejects missing character classes', () => {

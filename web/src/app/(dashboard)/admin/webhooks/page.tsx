@@ -11,20 +11,36 @@ type Row = {
   createdAt: string;
 };
 
+type Delivery = {
+  id: string;
+  eventType: string;
+  success: boolean;
+  attempts: number;
+  statusCode: number | null;
+  lastError: string | null;
+  dead: boolean;
+  createdAt: string;
+};
+
 export default function WebhooksPage() {
   const [rows, setRows] = useState<Row[]>([]);
+  const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [url, setUrl] = useState('');
   const [secret, setSecret] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const load = () =>
-    api<{ data: Row[] }>('/webhooks')
-      .then((r) => setRows(r.data || []))
-      .catch((e: unknown) => setError(e instanceof ApiError ? e.message : 'Failed'));
+  const load = async () => {
+    const [w, d] = await Promise.all([
+      api<{ data: Row[] }>('/webhooks'),
+      api<{ data: Delivery[] }>('/webhooks/deliveries').catch(() => ({ data: [] as Delivery[] })),
+    ]);
+    setRows(w.data || []);
+    setDeliveries(d.data || []);
+  };
 
   useEffect(() => {
-    void load();
+    void load().catch((e: unknown) => setError(e instanceof ApiError ? e.message : 'Failed'));
   }, []);
 
   async function create(e: FormEvent) {
@@ -58,14 +74,25 @@ export default function WebhooksPage() {
     }
   }
 
+  async function redeliver(id: string) {
+    setBusy(true);
+    try {
+      await api(`/webhooks/deliveries/${encodeURIComponent(id)}/redeliver`, { method: 'POST' });
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Redeliver failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-semibold">Webhooks</h1>
         <p className="mt-1 text-sm text-[var(--text-secondary)]">
-          HTTPS endpoints receive signed events. Verify{' '}
-          <code className="text-xs">HMAC-SHA256(secret, timestamp + &quot;.&quot; + body)</code> using{' '}
-          <code className="text-xs">X-Watcher-Signature</code> and <code className="text-xs">X-Watcher-Timestamp</code>.
+          HTTPS only. Signature:{' '}
+          <code className="text-xs">HMAC-SHA256(secret, timestamp + &quot;.&quot; + body)</code>
         </p>
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
@@ -116,6 +143,53 @@ export default function WebhooksPage() {
               <tr>
                 <td colSpan={4} className="p-6 text-center text-sm text-[var(--text-muted)]">
                   No webhooks configured.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="surface overflow-x-auto">
+        <div className="border-b border-[var(--border)] px-4 py-3 text-sm font-semibold">Recent deliveries</div>
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Event</th>
+              <th>Status</th>
+              <th>Attempts</th>
+              <th>Error</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {deliveries.map((d) => (
+              <tr key={d.id}>
+                <td className="text-xs">{d.eventType}</td>
+                <td className="text-xs">
+                  {d.success ? 'OK' : d.dead ? 'Dead' : 'Pending'}
+                  {d.statusCode != null ? ` (${d.statusCode})` : ''}
+                </td>
+                <td className="text-xs tabular-nums">{d.attempts}</td>
+                <td className="max-w-xs truncate text-xs text-[var(--text-muted)]">{d.lastError || '—'}</td>
+                <td>
+                  {!d.success && (
+                    <button
+                      type="button"
+                      className="text-sm text-[var(--accent)] underline"
+                      disabled={busy}
+                      onClick={() => void redeliver(d.id)}
+                    >
+                      Redeliver
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {deliveries.length === 0 && (
+              <tr>
+                <td colSpan={5} className="p-6 text-center text-sm text-[var(--text-muted)]">
+                  No deliveries yet.
                 </td>
               </tr>
             )}

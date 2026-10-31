@@ -9,7 +9,12 @@ export function requestId(req: Request): string {
 
 export function json(
   body: unknown,
-  init: { status?: number; requestId?: string; retryAfterSeconds?: number } = {},
+  init: {
+    status?: number;
+    requestId?: string;
+    retryAfterSeconds?: number;
+    headers?: Record<string, string>;
+  } = {},
 ) {
   const headers = new Headers({
     'Content-Type': 'application/json',
@@ -17,6 +22,9 @@ export function json(
   });
   if (init.requestId) headers.set('X-Request-Id', init.requestId);
   if (init.retryAfterSeconds) headers.set('Retry-After', String(init.retryAfterSeconds));
+  if (init.headers) {
+    for (const [k, v] of Object.entries(init.headers)) headers.set(k, v);
+  }
   return NextResponse.json(body, { status: init.status ?? 200, headers });
 }
 

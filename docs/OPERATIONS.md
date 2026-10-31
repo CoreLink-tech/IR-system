@@ -67,3 +67,69 @@ when two-step is required. Generate secrets with `npm run gen:secrets`.
 - Backup / restore drill schedule (see docs/DATABASE.md for the scripts)
 - Full deployment steps (docs/DEPLOYMENT.md, still to be written)
 - Upgrade and rollback notes beyond "migrations are forward only"
+
+
+## Hand-applied Turso migrations (Phase 1–4)
+
+Production Turso was updated in the SQL console with migrations `0001_phase1` through `0006_phase4_trust` without recording rows in `__drizzle_migrations`. Future `npm run db:migrate` may try to re-apply them. The migrator already treats a **directory name** as a valid applied marker (not only content hashes).
+
+Run **once** in the Turso console so migrate skips those folders:
+
+```sql
+INSERT INTO __drizzle_migrations (hash, created_at) VALUES
+  ('0001_phase1', unixepoch()*1000),
+  ('0002_phase1_status_history', unixepoch()*1000),
+  ('0003_phase2_detection', unixepoch()*1000),
+  ('0004_phase2_finish', unixepoch()*1000),
+  ('0005_phase3_decide', unixepoch()*1000),
+  ('0006_phase4_trust', unixepoch()*1000);
+```
+
+Verify key columns exist:
+
+```sql
+PRAGMA table_info(api_keys);
+PRAGMA table_info(events);
+PRAGMA table_info(detection_rules);
+```
+
+You should see `tenant_id` and `rate_limit_per_minute` on `api_keys`, `tenant_id` on `events`, and `mode` on `detection_rules`.
+
+## Branch protection (GitHub)
+
+Require the **Web CI** check to pass before merging to `main`:
+
+1. Repo **Settings → Branches → Add rule** (or edit rule for `main`).
+2. Enable **Require status checks to pass before merging**.
+3. Select **Web CI** (the workflow defined under `.github/workflows`).
+4. Do not allow bypass for admins on production-critical merges if your org policy allows locking that down.
+
+
+## Emergency unlock (web)
+
+From `web/` with production env:
+
+```bash
+node --env-file=.env scripts/unlock-user.mjs user@example.com
+```
+
+Clears password-login and MFA throttle rows for that email and writes a SYSTEM audit row.
+
+
+## Webhook retries migration (0008)
+
+Run once in Turso if not already applied:
+
+```sql
+ALTER TABLE webhook_deliveries ADD COLUMN next_attempt_at INTEGER;
+ALTER TABLE webhook_deliveries ADD COLUMN dead INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE webhook_deliveries ADD COLUMN event_id TEXT;
+CREATE INDEX IF NOT EXISTS webhook_deliveries_next_idx ON webhook_deliveries(next_attempt_at);
+
+INSERT INTO __drizzle_migrations (hash, created_at)
+VALUES ('0008_webhook_retries', unixepoch()*1000);
+```
+
+## Tenancy note
+
+This deployment remains **single-tenant** until every query filters by `tenant_id`. Do not onboard a second customer on the same database without that work.

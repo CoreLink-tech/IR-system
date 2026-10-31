@@ -1,3 +1,4 @@
+import { after } from 'next/server';
 import { and, eq } from 'drizzle-orm';
 import { db } from '@/server/db/client';
 import { apiKeys, events, incidents, ipBlocks, allowlist, ipIntelligence, ruleHits } from '@/server/db/schema';
@@ -459,11 +460,13 @@ export async function ingestEvent(apiKeyId: string, body: IngestBody, tenantId?:
         tenantId: resolvedTenant,
       });
       await db.update(events).set({ incidentId }).where(eq(events.id, eventId));
-      void dispatchWebhook(resolvedTenant, 'incident.created', {
+      after(() => {
+        void dispatchWebhook(resolvedTenant, 'incident.created', {
         incident_id: incidentId,
         ip: body.ip_address,
         event_type: body.event_type,
         risk_score: riskScore,
+      });
       });
     } catch (e) {
       console.error('incident attach failed; event retained', eventId, e);
@@ -499,10 +502,12 @@ export async function ingestEvent(apiKeyId: string, body: IngestBody, tenantId?:
               activeKey,
               createdAt: new Date(),
             });
-            void dispatchWebhook(resolvedTenant, 'block.created', {
-              ip: body.ip_address,
-              reason: `Automatic: risk ${riskScore}`,
-              incident_id: incidentId,
+            after(() => {
+              void dispatchWebhook(resolvedTenant, 'block.created', {
+                ip: body.ip_address,
+                reason: `Automatic: risk ${riskScore}`,
+                incident_id: incidentId,
+              });
             });
             const { setCooldown } = await import('@/server/services/velocity');
             const { getRuleRuntime: gr } = await import('@/server/services/rules');

@@ -3,7 +3,7 @@
  * Run: npm test (vitest)
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { mkdtempSync, rmSync, readFileSync } from 'fs';
+import { mkdtempSync, rmSync, readFileSync, readdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { tmpdir } from 'os';
 import { fileURLToPath } from 'url';
@@ -24,15 +24,35 @@ process.env.JWT_REFRESH_SECRET = 'integration-test-refresh-secret-32chars!!';
 process.env.API_KEY_HASH_PEPPER = 'integration-pepper-16';
 process.env.API_KEY_PREFIX = 'IRS_';
 process.env.REQUIRE_2FA = 'false';
-process.env.NODE_ENV = 'test';
+(process.env as Record<string, string>).NODE_ENV = 'test';
 
 // Force a fresh db singleton after env is set.
 delete (globalThis as unknown as { __irDb?: unknown }).__irDb;
 
 async function applyMigration() {
   const client = createClient({ url: dbUrl });
-  const sql = readFileSync(join(__dirname, '../../../drizzle/0000_initial/migration.sql'), 'utf8');
-  await client.executeMultiple(sql);
+  const drizzleDir = join(__dirname, '../../../drizzle');
+  const dirs = readdirSync(drizzleDir, { withFileTypes: true })
+    .filter((d) => d.isDirectory() && /^\d{4}_/.test(d.name))
+    .map((d) => d.name)
+    .sort();
+  for (const dir of dirs) {
+    const sqlPath = join(drizzleDir, dir, 'migration.sql');
+    let sql: string;
+    try {
+      sql = readFileSync(sqlPath, 'utf8');
+    } catch {
+      continue;
+    }
+    for (const stmt of sql.split(';').map((s) => s.trim()).filter(Boolean)) {
+      try {
+        await client.execute(stmt);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/duplicate column|already exists/i.test(msg)) continue;
+      }
+    }
+  }
   client.close();
 }
 

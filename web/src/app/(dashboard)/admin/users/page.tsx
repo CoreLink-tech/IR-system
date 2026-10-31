@@ -193,7 +193,7 @@ export default function AdminUsersPage() {
                     type={showPassword ? 'text' : 'password'}
                     autoComplete="new-password"
                     required
-                    minLength={6}
+                    minLength={8}
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                   />
