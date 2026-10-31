@@ -321,3 +321,25 @@ export const ruleVerdicts = sqliteTable('rule_verdicts', {
   actorId: text('actor_id'),
   createdAt: ts('created_at').default(sql`(unixepoch() * 1000)`),
 }, (t) => [index('rule_verdicts_code_idx').on(t.ruleCode)]);
+
+export const decisions = sqliteTable('decisions', {
+  id: id(),
+  tenantId: text('tenant_id'),
+  apiKeyId: text('api_key_id'),
+  idempotencyKey: text('idempotency_key'),
+  outcome: text('outcome').notNull(),
+  score: integer('score').notNull().default(0),
+  reasons: text('reasons'),
+  ruleHits: text('rule_hits'),
+  ipAddress: text('ip_address'),
+  userId: text('user_id'),
+  sessionId: text('session_id'),
+  actionContext: text('action_context'),
+  ttlSeconds: integer('ttl_seconds').notNull().default(60),
+  feedback: text('feedback'),
+  createdAt: ts('created_at').default(sql`(unixepoch() * 1000)`),
+}, (t) => [
+  uniqueIndex('decisions_idem_idx').on(t.apiKeyId, t.idempotencyKey),
+  index('decisions_created_idx').on(t.createdAt),
+  index('decisions_ip_idx').on(t.ipAddress),
+]);

@@ -59,7 +59,7 @@ function scrubMetadata(meta: Record<string, unknown> | undefined): string | null
   return JSON.stringify(out);
 }
 
-async function scoreEvent(
+export async function scoreForDecision(
   type: string,
   severity: string | undefined,
   ctx: {
@@ -396,7 +396,7 @@ export async function ingestEvent(apiKeyId: string, body: IngestBody, tenantId?:
 
   const resolvedTenant = tenantId || (await ensureDefaultTenant());
   const { riskScore, riskLevel, matched, autoBlockThreshold, blockMinutes, incidentThreshold, skipAutoBlock } =
-    await scoreEvent(body.event_type, body.severity, { ip: body.ip_address, tenantId: resolvedTenant, userId: body.user_id, sessionId: body.session_id, userAgent: body.user_agent });
+    await scoreForDecision(body.event_type, body.severity, { ip: body.ip_address, tenantId: resolvedTenant, userId: body.user_id, sessionId: body.session_id, userAgent: body.user_agent });
   const eventId = newId();
   const occurredAt = body.timestamp ? new Date(body.timestamp) : new Date();
 
