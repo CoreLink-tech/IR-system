@@ -271,3 +271,12 @@ export const logEntries = sqliteTable('log_entries', {
   index('log_entries_tenant_created_idx').on(t.tenantId, t.createdAt),
   index('log_entries_ip_idx').on(t.ipAddress),
 ]);
+
+export const incidentStatusHistory = sqliteTable('incident_status_history', {
+  id: id(),
+  incidentId: text('incident_id').notNull(),
+  fromStatus: text('from_status'),
+  toStatus: text('to_status').notNull(),
+  actorId: text('actor_id'),
+  createdAt: ts('created_at').default(sql`(unixepoch() * 1000)`),
+}, (t) => [index('incident_status_history_incident_idx').on(t.incidentId)]);

@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNotNull, lt, or } from 'drizzle-orm';
 import { err, json, requestId } from '@/server/api';
 import { db } from '@/server/db/client';
-import { events, loginThrottle, refreshTokens, ipBlocks, incidents } from '@/server/db/schema';
+import { events, loginThrottle, refreshTokens, ipBlocks, incidents, logEntries } from '@/server/db/schema';
 
 export const runtime = 'nodejs';
 
@@ -58,12 +58,20 @@ export async function GET(req: Request) {
     }
   }
 
+  const logCutoff = new Date(Date.now() - 7 * 86400000);
+  const oldLogs = await db.select({ id: logEntries.id }).from(logEntries).where(lt(logEntries.createdAt, logCutoff));
+  for (let i = 0; i < oldLogs.length; i += 200) {
+    const batch = oldLogs.slice(i, i + 200).map((r) => r.id);
+    if (batch.length) await db.delete(logEntries).where(inArray(logEntries.id, batch));
+  }
+
   return json(
     {
       ok: true,
       ranAt: now.toISOString(),
       eventsPurged: toDelete.length,
       eventsProtectedByActiveIncidents: aged.length - toDelete.length,
+      logsPurged: oldLogs.length,
     },
     { requestId: rid },
   );

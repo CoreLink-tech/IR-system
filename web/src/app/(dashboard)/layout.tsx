@@ -16,6 +16,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/overview', label: 'Overview', icon: 'grid', roles: ['SUPER_ADMIN', 'SECURITY_ADMIN', 'ANALYST', 'VIEWER'] },
       { href: '/incidents', label: 'Incidents', icon: 'alert', roles: ['SUPER_ADMIN', 'SECURITY_ADMIN', 'ANALYST', 'VIEWER'] },
       { href: '/ips', label: 'IP Intelligence', icon: 'globe', roles: ['SUPER_ADMIN', 'SECURITY_ADMIN', 'ANALYST', 'VIEWER'] },
+      { href: '/logs', label: 'Logs', icon: 'list', roles: ['SUPER_ADMIN', 'SECURITY_ADMIN', 'ANALYST'] },
     ],
   },
   {
@@ -37,6 +38,7 @@ const NAV_GROUPS: NavGroup[] = [
       // Super admin only
       { href: '/admin/users', label: 'Users', icon: 'users', roles: ['SUPER_ADMIN'] },
       { href: '/admin/api-keys', label: 'API Keys', icon: 'key', roles: ['SUPER_ADMIN', 'SECURITY_ADMIN'] },
+      { href: '/admin/webhooks', label: 'Webhooks', icon: 'globe', roles: ['SUPER_ADMIN', 'SECURITY_ADMIN'] },
       { href: '/admin/settings', label: 'Settings', icon: 'settings', roles: ['SUPER_ADMIN'] },
       // Super admin + Security admin
       { href: '/admin/audit', label: 'Audit Log', icon: 'list', roles: ['SUPER_ADMIN', 'SECURITY_ADMIN'] },

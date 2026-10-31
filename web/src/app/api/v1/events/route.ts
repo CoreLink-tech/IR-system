@@ -2,7 +2,7 @@ import { desc, eq } from 'drizzle-orm';
 import { err, json, requestId } from '@/server/api';
 import { requireUser } from '@/server/auth/require-user';
 import { ingestEvent, verifyApiKey, type IngestBody } from '@/server/services/events';
-import { rateLimit } from '@/server/services/rate-limit';
+import { rateLimitAsync } from '@/server/services/rate-limit';
 import { clientIp } from '@/server/api';
 import { db } from '@/server/db/client';
 import { events } from '@/server/db/schema';
@@ -55,7 +55,7 @@ export async function POST(req: Request) {
   }
 
   const limit = key.rateLimitPerMinute && key.rateLimitPerMinute > 0 ? key.rateLimitPerMinute : 120;
-  const rl = rateLimit(`ingest:${key.id}:${clientIp(req)}`, limit, 60_000);
+  const rl = await rateLimitAsync(`ingest:${key.id}:${clientIp(req)}`, limit, 60_000);
   if (!rl.ok) {
     return err(429, 'Too many events', { code: 'rate_limited', requestId: rid, retryAfterSeconds: rl.retryAfterSeconds });
   }

@@ -1,8 +1,9 @@
-import { eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { err, json, requestId } from '@/server/api';
 import { requireUser } from '@/server/auth/require-user';
 import { db } from '@/server/db/client';
-import { events, incidents } from '@/server/db/schema';
+import { events, incidents, incidentStatusHistory, incidentNotes } from '@/server/db/schema';
+import { newId } from '@/server/auth/crypto';
 
 export const runtime = 'nodejs';
 
@@ -15,6 +16,13 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   const inc = rows[0];
   if (!inc) return err(404, 'Not found', { code: 'not_found', requestId: rid });
   const ev = await db.select().from(events).where(eq(events.incidentId, id)).limit(50);
+  const notes = await db.select().from(incidentNotes).where(eq(incidentNotes.incidentId, id)).orderBy(desc(incidentNotes.createdAt)).limit(50);
+  let history: Array<{ id: string; fromStatus: string | null; toStatus: string; actorId: string | null; createdAt: Date }> = [];
+  try {
+    history = await db.select().from(incidentStatusHistory).where(eq(incidentStatusHistory.incidentId, id)).orderBy(desc(incidentStatusHistory.createdAt)).limit(50);
+  } catch {
+    history = [];
+  }
   return json(
     {
       incident: {
@@ -38,6 +46,19 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
         severity: e.severity,
         riskScore: e.riskScore,
         createdAt: e.createdAt.toISOString(),
+      })),
+      notes: notes.map((n) => ({
+        id: n.id,
+        body: n.body,
+        authorId: n.authorId,
+        createdAt: n.createdAt.toISOString(),
+      })),
+      history: history.map((h) => ({
+        id: h.id,
+        fromStatus: h.fromStatus,
+        toStatus: h.toStatus,
+        actorId: h.actorId,
+        createdAt: h.createdAt.toISOString(),
       })),
     },
     { requestId: rid },
@@ -72,6 +93,16 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   }
   if (body.assignedTo !== undefined) patch.assignedTo = body.assignedTo;
   if (body.summary !== undefined) patch.summary = body.summary;
+  if (body.status && body.status !== rows[0].status) {
+    await db.insert(incidentStatusHistory).values({
+      id: newId(),
+      incidentId: id,
+      fromStatus: rows[0].status,
+      toStatus: body.status,
+      actorId: user.id,
+      createdAt: new Date(),
+    });
+  }
   await db.update(incidents).set(patch).where(eq(incidents.id, id));
   return json({ ok: true }, { requestId: rid });
 }

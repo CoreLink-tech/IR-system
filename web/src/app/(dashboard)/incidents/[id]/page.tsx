@@ -22,6 +22,8 @@ type Incident = {
 };
 
 type Ev = { id: string; eventType: string; severity: string; riskScore: number; createdAt: string };
+type Note = { id: string; body: string; authorId: string | null; createdAt: string };
+type Hist = { id: string; fromStatus: string | null; toStatus: string; createdAt: string };
 
 const STATUSES = ['OPEN', 'INVESTIGATING', 'CONTAINED', 'RESOLVED', 'FALSE_POSITIVE'];
 
@@ -47,14 +49,21 @@ export default function IncidentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [incident, setIncident] = useState<Incident | null>(null);
   const [events, setEvents] = useState<Ev[]>([]);
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [history, setHistory] = useState<Hist[]>([]);
+  const [noteBody, setNoteBody] = useState('');
+  const [assignee, setAssignee] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = () =>
-    api<{ incident: Incident; events: Ev[] }>(`/incidents/${id}`)
+    api<{ incident: Incident; events: Ev[]; notes?: Note[]; history?: Hist[] }>(`/incidents/${id}`)
       .then((r) => {
         setIncident(r.incident);
         setEvents(r.events || []);
+        setNotes(r.notes || []);
+        setHistory(r.history || []);
+        setAssignee(r.incident.assignedTo || '');
       })
       .catch((e: unknown) => setError(e instanceof ApiError ? e.message : 'Failed'));
 
@@ -164,6 +173,89 @@ export default function IncidentDetailPage() {
           ))}
         </div>
       </div>
+
+
+      <div className="surface p-4 space-y-3">
+        <div className="text-sm font-medium">Assignment</div>
+        <div className="flex flex-wrap gap-2">
+          <input
+            className="rounded border border-[var(--border)] bg-transparent px-3 py-1.5 text-sm"
+            placeholder="Assignee user id or email"
+            value={assignee}
+            onChange={(e) => setAssignee(e.target.value)}
+          />
+          <button
+            type="button"
+            className="btn btn-secondary text-xs"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await api(`/incidents/${id}`, { method: 'PATCH', json: { assignedTo: assignee || null } });
+                await load();
+              } catch (e: unknown) {
+                setError(e instanceof ApiError ? e.message : 'Failed');
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Save assignee
+          </button>
+        </div>
+      </div>
+
+      <div className="surface p-4 space-y-3">
+        <div className="text-sm font-medium">Notes</div>
+        <ul className="space-y-2 text-sm">
+          {notes.map((n) => (
+            <li key={n.id} className="border-b border-[var(--border)] pb-2">
+              <p>{n.body}</p>
+              <p className="text-xs text-[var(--text-muted)]">{new Date(n.createdAt).toLocaleString()}</p>
+            </li>
+          ))}
+          {notes.length === 0 && <li className="text-[var(--text-muted)]">No notes yet.</li>}
+        </ul>
+        <textarea
+          className="w-full rounded border border-[var(--border)] bg-transparent px-3 py-2 text-sm"
+          rows={3}
+          placeholder="Add a note…"
+          value={noteBody}
+          onChange={(e) => setNoteBody(e.target.value)}
+        />
+        <button
+          type="button"
+          className="btn btn-primary text-xs"
+          disabled={busy || !noteBody.trim()}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await api(`/incidents/${id}/notes`, { method: 'POST', json: { body: noteBody.trim() } });
+              setNoteBody('');
+              await load();
+            } catch (e: unknown) {
+              setError(e instanceof ApiError ? e.message : 'Failed');
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Add note
+        </button>
+      </div>
+
+      {history.length > 0 && (
+        <div className="surface p-4">
+          <div className="mb-2 text-sm font-medium">Status history</div>
+          <ul className="space-y-1 text-xs text-[var(--text-secondary)]">
+            {history.map((h) => (
+              <li key={h.id}>
+                {(h.fromStatus || '—')} → {h.toStatus} · {new Date(h.createdAt).toLocaleString()}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Related events */}
       <div className="surface">

@@ -1,33 +1,44 @@
-# Phase 1 progress (Watcher)
+# Phase 1 — complete (MVP scope)
 
-## Shipped in this pass
+Watcher Phase 1 is **closed for pilot**. Remaining gaps are Phase 2+ or production hardening.
 
-| Area | What |
-|------|------|
-| **Tenancy foundation** | `tenants`, `tenant_members`, `stores`; `tenant_id` on keys/events/incidents/blocks |
-| **Default workspace** | `ensureDefaultTenant()` — existing single-tenant data maps to slug `default` |
-| **Webhooks** | `POST/GET /api/v1/webhooks`; HMAC `X-Watcher-Signature`; fires `incident.created`, `block.created` |
-| **Incident notes** | `GET/POST /api/v1/incidents/:id/notes` |
-| **Log ingest MVP** | `POST /api/v1/logs` (JSON/NDJSON, API key); `GET /api/v1/logs` for dashboard |
-| **Per-key rate limit** | `api_keys.rate_limit_per_minute` (default 120) |
-| **Migration** | `drizzle/0001_phase1/migration.sql` |
+## Delivered
 
-## Compatibility
+| Capability | Status |
+|------------|--------|
+| Multi-tenancy foundation (`tenants`, members, stores, `tenant_id`) | Done |
+| Default workspace (compat for single-tenant / PHP) | Done |
+| Webhooks API + HMAC + dashboard UI | Done |
+| Incident notes + assign + status history | Done |
+| Log ingest (`POST /api/v1/logs`) + Logs UI | Done |
+| Log retention 7 days (cron) | Done |
+| Per-key rate limit + optional Upstash shared limits | Done |
+| Rules admin (thresholds) | Done |
+| Audit log | Done |
 
-- `/api/v1/events` and `/api/v1/security/blocked-ips` unchanged for PHP clients.
-- Keys without `tenant_id` resolve to the default tenant at ingest time.
-
-## Not done yet (still Phase 1)
-
-- Full workspace UI / invite members / multi-tenant dashboard switcher
-- Webhook retry queue (QStash) and delivery UI
-- Incident assign / merge / SLA
-- Shared Redis rate limits
-- Log viewer UI page, NGINX-specific parser, 7-day log purge in cron
-- Separate log warehouse (ClickHouse etc.) — Turso is pilot-only
-
-## Apply migration
+## Migrations
 
 ```bash
 cd web && npm run db:migrate
 ```
+
+- `0001_phase1` — tenancy, webhooks, notes, logs  
+- `0002_phase1_status_history` — incident status history  
+
+## Optional env
+
+```
+UPSTASH_REDIS_REST_URL=
+UPSTASH_REDIS_REST_TOKEN=
+```
+
+Without Upstash, rate limits remain per serverless isolate.
+
+## Deferred (not Phase 1)
+
+- Multi-workspace switcher / member invites UI  
+- Webhook retry queue (QStash)  
+- Incident merge + SLA timers  
+- ClickHouse / Axiom log warehouse  
+- Full detection DSL / velocity windows (Phase 2)  
+- `/v1/decide` (Phase 3)  

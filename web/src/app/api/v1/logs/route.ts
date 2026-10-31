@@ -6,7 +6,7 @@ import { db } from '@/server/db/client';
 import { logEntries } from '@/server/db/schema';
 import { verifyApiKey } from '@/server/services/events';
 import { ensureDefaultTenant } from '@/server/services/tenancy';
-import { rateLimit } from '@/server/services/rate-limit';
+import { rateLimitAsync } from '@/server/services/rate-limit';
 
 export const runtime = 'nodejs';
 
@@ -26,7 +26,7 @@ export async function POST(req: Request) {
     return err(403, 'API key lacks logs:write', { code: 'forbidden', requestId: rid });
   }
   const limit = key.rateLimitPerMinute && key.rateLimitPerMinute > 0 ? key.rateLimitPerMinute : 120;
-  const rl = rateLimit(`logs:${key.id}`, limit, 60_000);
+  const rl = await rateLimitAsync(`logs:${key.id}`, limit, 60_000);
   if (!rl.ok) {
     return err(429, 'Too many log batches', { code: 'rate_limited', requestId: rid, retryAfterSeconds: rl.retryAfterSeconds });
   }

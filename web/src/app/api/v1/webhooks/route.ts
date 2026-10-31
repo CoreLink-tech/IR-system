@@ -80,3 +80,19 @@ export async function POST(req: Request) {
     { requestId: rid },
   );
 }
+
+export async function DELETE(req: Request) {
+  const rid = requestId(req);
+  const me = await requireUser(req);
+  if (!me) return err(401, 'Unauthorized', { code: 'unauthorized', requestId: rid });
+  if (me.role === 'VIEWER') return err(403, 'Forbidden', { code: 'forbidden', requestId: rid });
+  const id = new URL(req.url).searchParams.get('id');
+  if (!id) return err(400, 'id required', { code: 'invalid_body', requestId: rid });
+  const tenantId = await ensureDefaultTenant();
+  const rows = await db.select().from(webhooks).where(eq(webhooks.id, id)).limit(1);
+  if (!rows[0] || rows[0].tenantId !== tenantId) {
+    return err(404, 'Not found', { code: 'not_found', requestId: rid });
+  }
+  await db.delete(webhooks).where(eq(webhooks.id, id));
+  return json({ ok: true }, { requestId: rid });
+}
