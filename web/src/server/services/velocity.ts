@@ -146,3 +146,30 @@ export async function countEventsForUser(opts: {
     );
   return Number(rows[0]?.c ?? 0);
 }
+
+/** True if eventTypeA occurred for this IP before the current moment within window. */
+export async function hasPriorEventType(opts: {
+  ip: string;
+  eventType: string;
+  windowMinutes: number;
+}): Promise<boolean> {
+  const n = await countEventsInWindow({
+    ip: opts.ip,
+    eventType: opts.eventType,
+    windowMinutes: opts.windowMinutes,
+  });
+  return n > 0;
+}
+
+/** Session-scoped event count. */
+export async function countEventsForSession(opts: {
+  sessionId: string;
+  eventType?: string;
+  windowMinutes: number;
+}): Promise<number> {
+  const since = new Date(Date.now() - opts.windowMinutes * 60_000);
+  const conditions = [eq(events.sessionId, opts.sessionId), gte(events.createdAt, since)];
+  if (opts.eventType) conditions.push(eq(events.eventType, opts.eventType));
+  const rows = await db.select({ c: sql<number>`count(*)` }).from(events).where(and(...conditions));
+  return Number(rows[0]?.c ?? 0);
+}

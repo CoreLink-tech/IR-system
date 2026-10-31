@@ -13,14 +13,9 @@ type Rule = {
 };
 
 type Sim = {
-  rule: string;
   hours: number;
-  windowMinutes: number;
-  threshold: number;
-  loginFailedEvents: number;
-  distinctIps: number;
-  ipsThatWouldMatch: number;
-  sampleIps: string[];
+  totalEvents: number;
+  results: Record<string, { wouldMatch: number; sample: string[]; params: Record<string, number> }>;
   note: string;
 };
 
@@ -97,7 +92,7 @@ export default function RulesPage() {
       <div className="surface p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-[14px] font-[750]">Simulate brute_force (24h)</h2>
+            <h2 className="text-[14px] font-[750]">Simulate Phase 2 rules (24h)</h2>
             <p className="mt-1 text-[12px] text-[#5f6f67]">Read-only backtest against stored login_failed events.</p>
           </div>
           <button type="button" className="btn btn-secondary text-[11px]" disabled={simBusy} onClick={() => void runSimulate()}>
@@ -105,13 +100,20 @@ export default function RulesPage() {
           </button>
         </div>
         {sim && (
-          <div className="mt-3 grid gap-2 text-[12px] text-[#5f6f67] sm:grid-cols-3">
-            <div>Events: <strong className="text-[var(--text)]">{sim.loginFailedEvents}</strong></div>
-            <div>IPs: <strong className="text-[var(--text)]">{sim.distinctIps}</strong></div>
-            <div>Would match: <strong className="text-[var(--text)]">{sim.ipsThatWouldMatch}</strong></div>
-            {sim.sampleIps?.length > 0 && (
-              <div className="sm:col-span-3 mono text-[10px]">Sample: {sim.sampleIps.join(', ')}</div>
-            )}
+          <div className="mt-3 space-y-2 text-[12px] text-[#5f6f67]">
+            <div>
+              Window: {sim.hours}h · Events scanned: <strong className="text-[var(--text)]">{sim.totalEvents}</strong>
+            </div>
+            {Object.entries(sim.results || {}).map(([code, r]) => (
+              <div key={code} className="rounded border border-[var(--border)] px-3 py-2">
+                <span className="font-medium text-[var(--text)]">{code}</span>
+                {' — would match '}
+                <strong className="text-[var(--text)]">{r.wouldMatch}</strong>
+                {r.sample?.length > 0 && (
+                  <div className="mono text-[10px] mt-1">Sample: {r.sample.join(', ')}</div>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </div>

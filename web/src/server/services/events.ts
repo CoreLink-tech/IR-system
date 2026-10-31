@@ -62,7 +62,7 @@ function scrubMetadata(meta: Record<string, unknown> | undefined): string | null
 async function scoreEvent(
   type: string,
   severity: string | undefined,
-  ctx: { ip?: string | null; tenantId?: string | null; userId?: string | null },
+  ctx: { ip?: string | null; tenantId?: string | null; userId?: string | null; sessionId?: string | null },
 ): Promise<{
   riskScore: number;
   riskLevel: string;
@@ -171,6 +171,54 @@ async function scoreEvent(
         matched.push('wp_probe');
       }
     }
+
+    // Sequence-style rules
+    const adminFails = rules['admin_after_fails'];
+    if (adminFails?.enabled && type === 'admin_access' && ctx.ip) {
+      const { hasPriorEventType } = await import('@/server/services/velocity');
+      if (await hasPriorEventType({ ip: ctx.ip, eventType: 'login_failed', windowMinutes: adminFails.config.windowMinutes ?? 30 })) {
+        riskScore += adminFails.config.bonusScore ?? 35;
+        matched.push('admin_after_fails');
+      }
+    }
+    const resetFails = rules['reset_after_fails'];
+    if (resetFails?.enabled && type === 'password_reset' && ctx.ip) {
+      const { hasPriorEventType } = await import('@/server/services/velocity');
+      if (await hasPriorEventType({ ip: ctx.ip, eventType: 'login_failed', windowMinutes: resetFails.config.windowMinutes ?? 60 })) {
+        riskScore += resetFails.config.bonusScore ?? 30;
+        matched.push('reset_after_fails');
+      }
+    }
+    const sess = rules['session_risk'];
+    if (sess?.enabled && ctx.sessionId) {
+      const { countEventsForSession } = await import('@/server/services/velocity');
+      const n = await countEventsForSession({
+        sessionId: ctx.sessionId,
+        windowMinutes: sess.config.windowMinutes ?? 15,
+      });
+      if (n + 1 >= (sess.config.threshold ?? 8)) {
+        riskScore += sess.config.bonusScore ?? 25;
+        matched.push('session_risk');
+      }
+      await bumpEntityScore({
+        tenantId: ctx.tenantId,
+        entityType: 'session',
+        entityKey: ctx.sessionId,
+        delta: 5,
+      });
+    }
+    const off = rules['off_hours_admin'];
+    if (off?.enabled && type === 'admin_access') {
+      const hour = new Date().getUTCHours();
+      const start = off.config.startHourUtc ?? 22;
+      const end = off.config.endHourUtc ?? 5;
+      const isOff = start > end ? hour >= start || hour < end : hour >= start && hour < end;
+      if (isOff) {
+        riskScore += off.config.bonusScore ?? 15;
+        matched.push('off_hours_admin');
+      }
+    }
+
     const entity = await bumpEntityScore({
       tenantId: ctx.tenantId,
       entityType: 'ip',
@@ -295,7 +343,7 @@ export async function ingestEvent(apiKeyId: string, body: IngestBody, tenantId?:
 
   const resolvedTenant = tenantId || (await ensureDefaultTenant());
   const { riskScore, riskLevel, matched, autoBlockThreshold, blockMinutes, incidentThreshold, skipAutoBlock } =
-    await scoreEvent(body.event_type, body.severity, { ip: body.ip_address, tenantId: resolvedTenant, userId: body.user_id });
+    await scoreEvent(body.event_type, body.severity, { ip: body.ip_address, tenantId: resolvedTenant, userId: body.user_id, sessionId: body.session_id });
   const eventId = newId();
   const occurredAt = body.timestamp ? new Date(body.timestamp) : new Date();
 
