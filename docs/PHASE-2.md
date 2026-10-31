@@ -1,27 +1,34 @@
-# Phase 2 — detection intelligence (in progress)
+# Phase 2 — detection intelligence
 
 ## Shipped
 
 | Feature | Implementation |
 |---------|----------------|
-| **Velocity windows** | DB counts over `windowMinutes` (multi-instance safe) |
-| **brute_force** | `login_failed` count ≥ threshold → bonus score |
-| **credential_stuffing** | Distinct `user_id` fails from one IP ≥ N |
-| **wp_probe** | Log path hits (`wp-login` / `xmlrpc.php`) |
-| **Entity IP score** | `entity_scores` with decay + contribution to risk |
-| **Cooldown** | After auto-block, suppress re-block for N minutes |
-| **Simulate** | `POST /api/v1/rules/simulate` backtest-lite for brute_force |
-| **Migration** | `0003_phase2_detection` |
+| Velocity windows | DB counts over `windowMinutes` |
+| `brute_force` | login_failed burst → bonus |
+| `credential_stuffing` | Distinct users failing from one IP |
+| `password_spray` | High fails for one user_id |
+| `checkout_abuse` | payment_security_event burst |
+| `wp_probe` | Log path hits wp-login / xmlrpc |
+| Entity IP score | `entity_scores` + decay |
+| Auto-block cooldown | `rule_cooldowns` |
+| Simulate UI | Admin → Rules → Run simulation |
+| Config edits | Inline threshold/window fields |
+| Migrations | `0003_phase2_detection` |
 
-## Apply
+## Apply migrations
+
+Local SQLite:
 
 ```bash
-cd web && npm run db:migrate
+cd web
+python3 scripts/migrate_local.py
+# or after npm install:
+npm run db:migrate
 ```
+
+Turso / production: set `DATABASE_URL` + `DATABASE_AUTH_TOKEN`, then `npm run db:migrate`.
 
 ## Not yet
 
-- Full sequence / absence rule DSL  
-- ASN / device fingerprint signals  
-- Formal backtest UI and precision tracking  
-- ML (not justified yet)  
+Full sequence/absence DSL · ASN/device · precision tracking · ML  
