@@ -50,6 +50,7 @@ async function applyMigration() {
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         if (/duplicate column|already exists/i.test(msg)) continue;
+        throw e;
       }
     }
   }

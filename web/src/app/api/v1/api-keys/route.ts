@@ -9,6 +9,23 @@ import { ensureDefaultTenant } from '@/server/services/tenancy';
 
 export const runtime = 'nodejs';
 
+const ALLOWED_SCOPES = new Set(['events:write', 'block:read', 'logs:write', 'decide', '*']);
+
+function normalizeScopes(requested: unknown, role: string): string {
+  const list = Array.isArray(requested)
+    ? requested.map(String)
+    : String(requested || 'events:write,block:read').split(',');
+  const out: string[] = [];
+  for (const s of list.map((x) => x.trim()).filter(Boolean)) {
+    if (!ALLOWED_SCOPES.has(s)) continue;
+    if (s === '*' && role !== 'SUPER_ADMIN') continue;
+    out.push(s);
+  }
+  if (!out.length) out.push('events:write', 'block:read');
+  return [...new Set(out)].join(',');
+}
+
+
 export async function GET(req: Request) {
   const rid = requestId(req);
   const me = await requireUser(req);
@@ -49,7 +66,7 @@ export async function POST(req: Request) {
     return err(400, 'Invalid JSON', { code: 'invalid_body', requestId: rid });
   }
   if (!body.name?.trim()) return err(400, 'name required', { code: 'invalid_body', requestId: rid });
-  const scopes = (body.scopes && body.scopes.length ? body.scopes : ['events:write', 'block:read']).join(',');
+  const scopes = normalizeScopes(body.scopes, me.role);
   const generated = generateApiKey(getEnv().apiKeyPrefix);
   const expiresAt =
     body.expiresInDays && body.expiresInDays > 0

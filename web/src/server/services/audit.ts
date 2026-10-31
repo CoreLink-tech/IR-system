@@ -4,9 +4,19 @@ import { db } from '@/server/db/client';
 import { auditLog } from '@/server/db/schema';
 import { newId } from '@/server/auth/crypto';
 
-function hashPayload(prevHash: string, body: Record<string, unknown>): string {
+export function hashAuditPayload(prevHash: string, body: Record<string, unknown>): string {
   const canonical = JSON.stringify(body);
   return createHash('sha256').update(`${prevHash}|${canonical}`).digest('hex');
+}
+
+function isBusy(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  return /BUSY|locked/i.test(msg);
+}
+
+function missingHashColumn(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  return /no such column.*(entry_hash|prev_hash)/i.test(msg);
 }
 
 export async function writeAudit(entry: {
@@ -25,7 +35,6 @@ export async function writeAudit(entry: {
 }) {
   const id = newId();
   const createdAt = new Date();
-
   const body = {
     id,
     actorType: entry.actorType,
@@ -37,49 +46,65 @@ export async function writeAudit(entry: {
     createdAt: createdAt.toISOString(),
   };
 
-  try {
-    await db.transaction(async (tx) => {
-      let prevHash = 'GENESIS';
-      const last = await tx.select().from(auditLog).orderBy(desc(auditLog.createdAt)).limit(1);
-      if (last[0]?.entryHash) prevHash = last[0].entryHash;
-      const entryHash = hashPayload(prevHash, body);
-      await tx.insert(auditLog).values({
-        id,
-        prevHash,
-        entryHash,
-        requestId: entry.requestId || null,
-        actorType: entry.actorType,
-        actorId: entry.actorId || null,
-        actorLabel: entry.actorLabel || null,
-        action: entry.action,
-        targetType: entry.targetType || null,
-        targetId: entry.targetId || null,
-        result: entry.result || 'SUCCESS',
-        metadata: entry.metadata ? JSON.stringify(entry.metadata) : null,
-        ipAddress: entry.ipAddress || null,
-        userAgent: entry.userAgent || null,
-        tenantId: entry.tenantId || null,
-        createdAt,
-      });
-    });
-  } catch {
-    // Fallback without hash columns / transaction support
-    await db.insert(auditLog).values({
-      id,
-      requestId: entry.requestId || null,
-      actorType: entry.actorType,
-      actorId: entry.actorId || null,
-      actorLabel: entry.actorLabel || null,
-      action: entry.action,
-      targetType: entry.targetType || null,
-      targetId: entry.targetId || null,
-      result: entry.result || 'SUCCESS',
-      metadata: entry.metadata ? JSON.stringify(entry.metadata) : null,
-      ipAddress: entry.ipAddress || null,
-      userAgent: entry.userAgent || null,
-      createdAt,
-    });
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await db.transaction(
+        async (tx) => {
+          let prevHash = 'GENESIS';
+          const last = await tx.select().from(auditLog).orderBy(desc(auditLog.createdAt)).limit(1);
+          if (last[0]?.entryHash) prevHash = last[0].entryHash;
+          const entryHash = hashAuditPayload(prevHash, body);
+          await tx.insert(auditLog).values({
+            id,
+            prevHash,
+            entryHash,
+            requestId: entry.requestId || null,
+            actorType: entry.actorType,
+            actorId: entry.actorId || null,
+            actorLabel: entry.actorLabel || null,
+            action: entry.action,
+            targetType: entry.targetType || null,
+            targetId: entry.targetId || null,
+            result: entry.result || 'SUCCESS',
+            metadata: entry.metadata ? JSON.stringify(entry.metadata) : null,
+            ipAddress: entry.ipAddress || null,
+            userAgent: entry.userAgent || null,
+            tenantId: entry.tenantId || null,
+            createdAt,
+          });
+        },
+        { behavior: 'immediate' },
+      );
+      return;
+    } catch (e) {
+      lastErr = e;
+      if (missingHashColumn(e)) {
+        await db.insert(auditLog).values({
+          id,
+          requestId: entry.requestId || null,
+          actorType: entry.actorType,
+          actorId: entry.actorId || null,
+          actorLabel: entry.actorLabel || null,
+          action: entry.action,
+          targetType: entry.targetType || null,
+          targetId: entry.targetId || null,
+          result: entry.result || 'SUCCESS',
+          metadata: entry.metadata ? JSON.stringify(entry.metadata) : null,
+          ipAddress: entry.ipAddress || null,
+          userAgent: entry.userAgent || null,
+          createdAt,
+        });
+        return;
+      }
+      if (isBusy(e) && attempt < 2) {
+        await new Promise((r) => setTimeout(r, 20 * (attempt + 1)));
+        continue;
+      }
+      throw e;
+    }
   }
+  throw lastErr;
 }
 
 export async function verifyAuditChain(limit = 500): Promise<{
@@ -107,7 +132,7 @@ export async function verifyAuditChain(limit = 500): Promise<{
     if (checked > 0 && expectedPrev !== prev) {
       return { ok: false, checked, brokenAt: row.id };
     }
-    const expected = hashPayload(expectedPrev, body);
+    const expected = hashAuditPayload(expectedPrev, body);
     if (expected !== row.entryHash) {
       return { ok: false, checked, brokenAt: row.id };
     }

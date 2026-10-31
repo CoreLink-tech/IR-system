@@ -7,7 +7,7 @@ import { logEntries } from '@/server/db/schema';
 import { verifyApiKey } from '@/server/services/events';
 import { ensureDefaultTenant } from '@/server/services/tenancy';
 import { rateLimitAsync } from '@/server/services/rate-limit';
-import { redactText } from '@/server/services/redact';
+import { redactJsonValue, redactText } from '@/server/services/redact';
 
 export const runtime = 'nodejs';
 
@@ -77,11 +77,10 @@ export async function POST(req: Request) {
   const tenantId = key.tenantId || (await ensureDefaultTenant());
   const redactEmails = true; // tenant setting default on
   const values = lines.map((item) => {
-    const o = (item && typeof item === 'object' ? item : { message: String(item) }) as Record<string, unknown>;
-    const message = redactText(String(o.message || o.msg || o.log || JSON.stringify(o)).slice(0, 8000), {
-      redactEmails,
-    });
-    const raw = redactText(JSON.stringify(o).slice(0, 16000), { redactEmails });
+    const rawObj = (item && typeof item === 'object' ? item : { message: String(item) }) as Record<string, unknown>;
+    const o = redactJsonValue(rawObj, { redactEmails }) as Record<string, unknown>;
+    const message = String(o.message || o.msg || o.log || JSON.stringify(o)).slice(0, 8000);
+    const raw = JSON.stringify(o).slice(0, 16000);
     return {
       id: newId(),
       tenantId,
@@ -92,7 +91,7 @@ export async function POST(req: Request) {
       path: o.path ? String(o.path) : null,
       method: o.method ? String(o.method) : null,
       statusCode: typeof o.status === 'number' ? o.status : typeof o.status_code === 'number' ? o.status_code : null,
-      userAgent: o.user_agent ? String(o.user_agent) : null,
+      userAgent: o.user_agent || o.userAgent ? String(o.user_agent || o.userAgent) : null,
       raw,
       createdAt: new Date(),
     };

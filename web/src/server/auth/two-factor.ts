@@ -1,5 +1,6 @@
 import { and, eq, isNull } from 'drizzle-orm';
 import { createHash } from 'crypto';
+import { createClient } from '@libsql/client';
 import { db } from '@/server/db/client';
 import { recoveryCodes, users, usedChallenges, loginThrottle } from '@/server/db/schema';
 import { newId, sha256 } from '@/server/auth/crypto';
@@ -15,77 +16,53 @@ function hashCode(code: string): string {
 
 const MAX_CHALLENGE_FAILURES = 5;
 
-async function challengeGate(jti: string, userId: string, ip?: string) {
-  const rows = await db.select().from(usedChallenges).where(eq(usedChallenges.jti, jti)).limit(1);
-  const row = rows[0];
-  if (row?.burnedAt || (row && row.failures >= MAX_CHALLENGE_FAILURES)) {
-    if (row && !row.burnedAt) {
-      await db.update(usedChallenges).set({ burnedAt: new Date() }).where(eq(usedChallenges.jti, jti));
+function libsql() {
+  const url = process.env.DATABASE_URL || 'file:./data/ir.db';
+  return createClient({ url, authToken: process.env.DATABASE_AUTH_TOKEN || undefined });
+}
+
+/** Atomic reserve of an MFA attempt slot before verifying the code. */
+async function reserveChallengeAttempt(jti: string, userId: string): Promise<number> {
+  const client = libsql();
+  try {
+    await client.execute({
+      sql: `INSERT INTO used_challenges (jti, user_id, failures, created_at)
+            VALUES (?, ?, 0, ?)
+            ON CONFLICT(jti) DO NOTHING`,
+      args: [jti, userId, Date.now()],
+    });
+    const updated = await client.execute({
+      sql: `UPDATE used_challenges SET failures = failures + 1
+            WHERE jti = ? AND burned_at IS NULL AND failures < ?
+            RETURNING failures`,
+      args: [jti, MAX_CHALLENGE_FAILURES],
+    });
+    if (!updated.rows.length) {
+      throw Object.assign(new Error('Challenge expired or invalid'), {
+        status: 401,
+        code: 'challenge_expired',
+      });
     }
-    await writeAudit({
-      actorType: 'USER',
-      actorId: userId,
-      action: 'auth.challenge_burned',
-      result: 'FAILURE',
-      ipAddress: ip || null,
-    });
-    throw Object.assign(new Error('Challenge expired or invalid'), {
-      status: 401,
-      code: 'challenge_expired',
-    });
-  }
-  if (!row) {
-    await db.insert(usedChallenges).values({ jti, userId, failures: 0, createdAt: new Date() });
+    return Number(updated.rows[0].failures);
+  } finally {
+    client.close();
   }
 }
 
-async function recordChallengeFailure(jti: string, userId: string, ip?: string) {
-  const rows = await db.select().from(usedChallenges).where(eq(usedChallenges.jti, jti)).limit(1);
-  const failures = (rows[0]?.failures || 0) + 1;
-  if (!rows[0]) {
-    await db.insert(usedChallenges).values({ jti, userId, failures, createdAt: new Date() });
-  } else {
-    await db
-      .update(usedChallenges)
-      .set({ failures, burnedAt: failures >= MAX_CHALLENGE_FAILURES ? new Date() : null })
-      .where(eq(usedChallenges.jti, jti));
+async function burnChallenge(jti: string) {
+  const client = libsql();
+  try {
+    await client.execute({
+      sql: `UPDATE used_challenges SET burned_at = ? WHERE jti = ?`,
+      args: [Date.now(), jti],
+    });
+  } finally {
+    client.close();
   }
-  await writeAudit({
-    actorType: 'USER',
-    actorId: userId,
-    action: 'auth.mfa_failed',
-    result: 'FAILURE',
-    ipAddress: ip || null,
-  });
-  const retry = await recordThrottleFailure(`mfa:${userId}`);
-  if (retry) {
-    await writeAudit({
-      actorType: 'USER',
-      actorId: userId,
-      action: 'auth.locked',
-      result: 'FAILURE',
-      ipAddress: ip || null,
-      metadata: { scope: 'mfa' },
-    });
-    throw Object.assign(new Error('Too many MFA attempts'), {
-      status: 429,
-      code: 'rate_limited',
-      retryAfterSeconds: retry,
-    });
-  }
-  if (failures >= MAX_CHALLENGE_FAILURES) {
-    await writeAudit({
-      actorType: 'USER',
-      actorId: userId,
-      action: 'auth.challenge_burned',
-      result: 'FAILURE',
-      ipAddress: ip || null,
-    });
-    throw Object.assign(new Error('Challenge expired or invalid'), {
-      status: 401,
-      code: 'challenge_expired',
-    });
-  }
+}
+
+async function clearMfaThrottle(userId: string) {
+  await db.delete(loginThrottle).where(eq(loginThrottle.keyHash, `mfa:${userId}`));
 }
 
 export async function verifyMfaAndLogin(
@@ -105,17 +82,63 @@ export async function verifyMfaAndLogin(
     throw Object.assign(new Error('Two-step not enabled'), { status: 400, code: 'two_factor_not_enabled' });
   }
 
-  const mfaKey = `mfa:${user.id}`;
-  const mfaRows = await db.select().from(loginThrottle).where(eq(loginThrottle.keyHash, mfaKey)).limit(1);
-  if (mfaRows[0]?.lockedUntil && mfaRows[0].lockedUntil.getTime() > Date.now()) {
+  // Per-user MFA: increment first (lockout after threshold)
+  const mfaRetry = await recordThrottleFailure(`mfa:${user.id}`);
+  if (mfaRetry) {
+    await writeAudit({
+      actorType: 'USER',
+      actorId: user.id,
+      action: 'auth.locked',
+      result: 'FAILURE',
+      ipAddress: meta.ip || null,
+      metadata: { scope: 'mfa' },
+    });
     throw Object.assign(new Error('Too many MFA attempts'), {
       status: 429,
       code: 'rate_limited',
-      retryAfterSeconds: Math.ceil((mfaRows[0].lockedUntil.getTime() - Date.now()) / 1000),
+      retryAfterSeconds: mfaRetry,
     });
   }
 
-  await challengeGate(jti, user.id, meta.ip);
+  // Reserve attempt slot before verifying (prevents parallel brute force)
+  let failures: number;
+  try {
+    failures = await reserveChallengeAttempt(jti, user.id);
+  } catch (e) {
+    await writeAudit({
+      actorType: 'USER',
+      actorId: user.id,
+      action: 'auth.challenge_burned',
+      result: 'FAILURE',
+      ipAddress: meta.ip || null,
+    });
+    throw e;
+  }
+
+  const rejectInvalid = async () => {
+    await writeAudit({
+      actorType: 'USER',
+      actorId: user.id,
+      action: 'auth.mfa_failed',
+      result: 'FAILURE',
+      ipAddress: meta.ip || null,
+    });
+    if (failures >= MAX_CHALLENGE_FAILURES) {
+      await burnChallenge(jti);
+      await writeAudit({
+        actorType: 'USER',
+        actorId: user.id,
+        action: 'auth.challenge_burned',
+        result: 'FAILURE',
+        ipAddress: meta.ip || null,
+      });
+      throw Object.assign(new Error('Challenge expired or invalid'), {
+        status: 401,
+        code: 'challenge_expired',
+      });
+    }
+    throw Object.assign(new Error('Invalid code'), { status: 401, code: 'invalid_code' });
+  };
 
   if (recoveryCode) {
     const h = hashCode(recoveryCode);
@@ -124,12 +147,10 @@ export async function verifyMfaAndLogin(
       .from(recoveryCodes)
       .where(and(eq(recoveryCodes.userId, user.id), eq(recoveryCodes.codeHash, h), isNull(recoveryCodes.usedAt)))
       .limit(1);
-    if (!codes[0]) {
-      await recordChallengeFailure(jti, user.id, meta.ip);
-      throw Object.assign(new Error('Invalid code'), { status: 401, code: 'invalid_code' });
-    }
-    await db.update(recoveryCodes).set({ usedAt: new Date() }).where(eq(recoveryCodes.id, codes[0].id));
-    await db.update(usedChallenges).set({ burnedAt: new Date() }).where(eq(usedChallenges.jti, jti));
+    if (!codes[0]) await rejectInvalid();
+    await db.update(recoveryCodes).set({ usedAt: new Date() }).where(eq(recoveryCodes.id, codes[0]!.id));
+    await burnChallenge(jti);
+    await clearMfaThrottle(user.id);
     return issueSession(user, meta);
   }
 
@@ -137,12 +158,10 @@ export async function verifyMfaAndLogin(
     throw Object.assign(new Error('Code required'), { status: 400, code: 'code_required' });
   }
   const check = verifyTotp(user.totpSecret, code, { window: 1, lastStep: user.totpLastStep });
-  if (!check.ok) {
-    await recordChallengeFailure(jti, user.id, meta.ip);
-    throw Object.assign(new Error('Invalid code'), { status: 401, code: 'invalid_code' });
-  }
+  if (!check.ok) await rejectInvalid();
   await db.update(users).set({ totpLastStep: check.step! }).where(eq(users.id, user.id));
-  await db.update(usedChallenges).set({ burnedAt: new Date() }).where(eq(usedChallenges.jti, jti));
+  await burnChallenge(jti);
+  await clearMfaThrottle(user.id);
   return issueSession(user, meta);
 }
 

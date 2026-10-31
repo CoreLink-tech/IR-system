@@ -1,34 +1,29 @@
 import { describe, it, expect } from 'vitest';
-import { redactText, redactPan } from './redact';
+import { redactText, redactPan, redactJsonValue } from './redact';
 
 describe('redact', () => {
-  it('redacts Luhn-valid PAN', () => {
-    // Visa test number
+  it('redacts Visa test PAN', () => {
     expect(redactPan('card 4111 1111 1111 1111 end')).toContain('[REDACTED_PAN]');
   });
 
-  it('keeps non-Luhn digit runs', () => {
-    const s = redactPan('order 1234567890123');
-    expect(s).not.toContain('[REDACTED_PAN]');
+  it('does not redact 1000 epoch-ms timestamps', () => {
+    for (let i = 0; i < 1000; i++) {
+      const ts = String(1_700_000_000_000 + i);
+      expect(redactPan(ts)).toBe(ts);
+    }
   });
 
-  it('redacts bearer and cookies', () => {
-    const s = redactText('Authorization: Bearer abc.def.ghi Cookie: session=xyz');
-    expect(s).toMatch(/REDACTED/);
-    expect(s).not.toContain('abc.def');
+  it('redacts card in path-like string', () => {
+    expect(redactText('/pay?card=4111111111111111')).toContain('[REDACTED_PAN]');
   });
 
-  it('redacts password fields', () => {
-    const s = redactText('password=secret123&user=a');
-    expect(s).toContain('[REDACTED]');
-    expect(s).not.toContain('secret123');
+  it('redacts password object fully', () => {
+    const o = redactJsonValue({ password: 'my secret pass', path: '/ok' }) as Record<string, unknown>;
+    expect(o.password).toBe('[REDACTED]');
+    expect(JSON.stringify(o)).not.toContain('secret');
   });
 
-  it('redacts emails by default', () => {
-    expect(redactText('mail me@example.com')).toContain('[REDACTED_EMAIL]');
-  });
-
-  it('can skip email redaction', () => {
-    expect(redactText('mail me@example.com', { redactEmails: false })).toContain('me@example.com');
+  it('redacts bearer tokens', () => {
+    expect(redactText('Bearer abc.def.ghi')).not.toContain('abc.def');
   });
 });

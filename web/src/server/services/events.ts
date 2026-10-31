@@ -460,14 +460,14 @@ export async function ingestEvent(apiKeyId: string, body: IngestBody, tenantId?:
         tenantId: resolvedTenant,
       });
       await db.update(events).set({ incidentId }).where(eq(events.id, eventId));
-      after(() => {
-        void dispatchWebhook(resolvedTenant, 'incident.created', {
-        incident_id: incidentId,
-        ip: body.ip_address,
-        event_type: body.event_type,
-        risk_score: riskScore,
-      });
-      });
+      after(() =>
+        dispatchWebhook(resolvedTenant, 'incident.created', {
+          incident_id: incidentId,
+          ip: body.ip_address,
+          event_type: body.event_type,
+          risk_score: riskScore,
+        }),
+      );
     } catch (e) {
       console.error('incident attach failed; event retained', eventId, e);
     }
@@ -502,13 +502,13 @@ export async function ingestEvent(apiKeyId: string, body: IngestBody, tenantId?:
               activeKey,
               createdAt: new Date(),
             });
-            after(() => {
-              void dispatchWebhook(resolvedTenant, 'block.created', {
+            after(() =>
+              dispatchWebhook(resolvedTenant, 'block.created', {
                 ip: body.ip_address,
                 reason: `Automatic: risk ${riskScore}`,
                 incident_id: incidentId,
-              });
-            });
+              }),
+            );
             const { setCooldown } = await import('@/server/services/velocity');
             const { getRuleRuntime: gr } = await import('@/server/services/rules');
             const rt = await gr();

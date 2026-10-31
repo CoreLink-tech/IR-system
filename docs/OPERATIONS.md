@@ -116,6 +116,26 @@ node --env-file=.env scripts/unlock-user.mjs user@example.com
 Clears password-login and MFA throttle rows for that email and writes a SYSTEM audit row.
 
 
+
+
+## Auth hardening migration (0007)
+
+If 2FA fails on production, ensure `used_challenges` exists:
+
+```sql
+CREATE TABLE IF NOT EXISTS used_challenges (
+  jti TEXT PRIMARY KEY NOT NULL,
+  user_id TEXT,
+  failures INTEGER NOT NULL DEFAULT 0,
+  burned_at INTEGER,
+  created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+);
+CREATE INDEX IF NOT EXISTS used_challenges_user_idx ON used_challenges(user_id);
+
+INSERT INTO __drizzle_migrations (hash, created_at)
+VALUES ('0007_auth_hardening', unixepoch()*1000);
+```
+
 ## Webhook retries migration (0008)
 
 Run once in Turso if not already applied:

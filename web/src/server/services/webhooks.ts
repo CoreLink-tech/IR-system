@@ -1,10 +1,12 @@
 import { createHmac, randomBytes } from 'crypto';
 import { lookup } from 'dns/promises';
 import { isIP } from 'net';
-import { and, eq, lte, or, isNull, sql } from 'drizzle-orm';
+import { Agent, fetch as undiciFetch } from 'undici';
+import { and, eq, lte } from 'drizzle-orm';
 import { db } from '@/server/db/client';
 import { webhooks, webhookDeliveries } from '@/server/db/schema';
 import { newId } from '@/server/auth/crypto';
+import { createClient } from '@libsql/client';
 
 export function newWebhookSecret(): string {
   return randomBytes(24).toString('base64url');
@@ -14,20 +16,41 @@ function sign(secret: string, body: string, ts: number): string {
   return createHmac('sha256', secret).update(`${ts}.${body}`).digest('hex');
 }
 
-const RETRY_MINUTES = [1, 5, 30, 120, 720]; // then dead
+const RETRY_MINUTES = [1, 5, 30, 120, 720];
 
-function isPrivateIp(ip: string): boolean {
-  if (ip === '::1' || ip === '0.0.0.0') return true;
-  if (ip.startsWith('127.') || ip.startsWith('10.') || ip.startsWith('192.168.') || ip.startsWith('169.254.'))
-    return true;
-  if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(ip)) return true;
-  // unique local IPv6 fc00::/7
-  if (ip.toLowerCase().startsWith('fc') || ip.toLowerCase().startsWith('fd')) return true;
-  return false;
+/** Reject private, reserved, link-local, CGNAT, metadata, and mapped addresses. */
+export function isBlockedIp(ip: string): boolean {
+  const raw = ip.toLowerCase().trim();
+  let v4 = raw;
+  if (raw.startsWith('::ffff:')) v4 = raw.slice(7);
+  // IPv4
+  if (isIP(v4) === 4) {
+    const parts = v4.split('.').map(Number);
+    const [a, b] = parts;
+    if (a === 0) return true; // 0.0.0.0/8
+    if (a === 10) return true;
+    if (a === 127) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT 100.64/10
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 192 && b === 0 && parts[2] === 2) return true; // 192.0.2.0/24 docs
+    if (a >= 224) return true; // multicast/reserved
+    return false;
+  }
+  // IPv6
+  if (isIP(raw) === 6) {
+    if (raw === '::1' || raw === '::') return true;
+    if (raw.startsWith('fc') || raw.startsWith('fd')) return true; // ULA
+    if (raw.startsWith('fe8') || raw.startsWith('fe9') || raw.startsWith('fea') || raw.startsWith('feb'))
+      return true; // fe80::/10
+    if (raw.startsWith('ff')) return true; // multicast
+    return false;
+  }
+  return true; // unknown form → reject
 }
 
-/** SSRF guard: https only, no private/link-local/metadata IPs. */
-export async function assertSafeWebhookUrl(urlStr: string): Promise<void> {
+export async function assertSafeWebhookUrl(urlStr: string): Promise<string[]> {
   let u: URL;
   try {
     u = new URL(urlStr);
@@ -42,25 +65,52 @@ export async function assertSafeWebhookUrl(urlStr: string): Promise<void> {
     throw Object.assign(new Error('Webhook host not allowed'), { status: 400, code: 'ssrf_blocked' });
   }
   if (isIP(host)) {
-    if (isPrivateIp(host) || host === '169.254.169.254') {
+    if (isBlockedIp(host)) {
       throw Object.assign(new Error('Webhook host not allowed'), { status: 400, code: 'ssrf_blocked' });
     }
-    return;
+    return [host];
   }
   const records = await lookup(host, { all: true });
-  for (const r of records) {
-    if (isPrivateIp(r.address) || r.address === '169.254.169.254') {
+  const addrs = records.map((r) => r.address);
+  for (const addr of addrs) {
+    if (isBlockedIp(addr)) {
       throw Object.assign(new Error('Webhook host resolves to private IP'), {
         status: 400,
         code: 'ssrf_blocked',
       });
     }
   }
+  if (!addrs.length) {
+    throw Object.assign(new Error('Webhook host did not resolve'), { status: 400, code: 'ssrf_blocked' });
+  }
+  return addrs;
+}
+
+function pinnedAgent(allowedIps: string[]) {
+  const allow = new Set(allowedIps);
+  return new Agent({
+    connect: {
+      lookup: (hostname, options, callback) => {
+        // Force only previously vetted addresses
+        const first = allowedIps[0];
+        if (!first) {
+          callback(new Error('ssrf_blocked'), '', 4);
+          return;
+        }
+        const family = isIP(first) === 6 ? 6 : 4;
+        if (typeof options === 'function') {
+          // overload
+          (options as (err: Error | null, address: string, family: number) => void)(null, first, family);
+          return;
+        }
+        callback(null, first, family);
+      },
+    },
+  });
 }
 
 async function deliverOnce(
   w: { id: string; url: string; secret: string },
-  eventType: string,
   body: string,
   eventId: string,
   deliveryId: string,
@@ -71,10 +121,12 @@ async function deliverOnce(
   let success = false;
   let lastError: string | null = null;
   try {
-    await assertSafeWebhookUrl(w.url);
-    const res = await fetch(w.url, {
+    const addrs = await assertSafeWebhookUrl(w.url);
+    const agent = pinnedAgent(addrs);
+    const res = await undiciFetch(w.url, {
       method: 'POST',
       redirect: 'manual',
+      dispatcher: agent,
       headers: {
         'Content-Type': 'application/json',
         'X-Watcher-Signature': sign(w.secret, body, ts),
@@ -96,10 +148,11 @@ async function deliverOnce(
     lastError = e instanceof Error ? e.message : 'delivery failed';
   }
 
+  const idx = Math.min(Math.max(attempts - 1, 0), RETRY_MINUTES.length - 1);
   const nextAttempt =
     success || attempts >= RETRY_MINUTES.length
       ? null
-      : new Date(Date.now() + RETRY_MINUTES[Math.min(attempts, RETRY_MINUTES.length - 1)] * 60_000);
+      : new Date(Date.now() + RETRY_MINUTES[idx] * 60_000);
   const dead = !success && attempts >= RETRY_MINUTES.length;
 
   await db
@@ -156,46 +209,58 @@ export async function dispatchWebhook(
         attempts: 0,
         success: false,
         eventId,
+        nextAttemptAt: new Date(), // claimable if process dies mid-delivery
         createdAt: new Date(),
       });
-      await deliverOnce(w, eventType, body, eventId, deliveryId, 1);
+      await deliverOnce(w, body, eventId, deliveryId, 1);
     }),
   );
 }
 
-/** Process due webhook retries (cron). */
+function libsql() {
+  const url = process.env.DATABASE_URL || 'file:./data/ir.db';
+  return createClient({ url, authToken: process.env.DATABASE_AUTH_TOKEN || undefined });
+}
+
+/** Process due webhook retries (cron). Claims rows atomically. */
 export async function processWebhookRetries(limit = 50) {
-  const now = new Date();
-  const due = await db
-    .select()
-    .from(webhookDeliveries)
-    .where(
-      and(
-        eq(webhookDeliveries.success, false),
-        eq(webhookDeliveries.dead, false),
-        lte(webhookDeliveries.nextAttemptAt, now),
-      ),
-    )
-    .limit(limit);
+  const now = Date.now();
+  const client = libsql();
+  const due = await client.execute({
+    sql: `SELECT id, webhook_id, event_type, payload, attempts, event_id, next_attempt_at
+          FROM webhook_deliveries
+          WHERE success = 0 AND IFNULL(dead, 0) = 0 AND next_attempt_at IS NOT NULL AND next_attempt_at <= ?
+          ORDER BY next_attempt_at ASC LIMIT ?`,
+    args: [now, limit],
+  });
 
   let processed = 0;
-  for (const d of due) {
-    const hooks = await db.select().from(webhooks).where(eq(webhooks.id, d.webhookId)).limit(1);
+  for (const row of due.rows) {
+    const id = String(row.id);
+    const claimed = await client.execute({
+      sql: `UPDATE webhook_deliveries SET next_attempt_at = NULL
+            WHERE id = ? AND next_attempt_at = ?
+            RETURNING id`,
+      args: [id, row.next_attempt_at],
+    });
+    if (!claimed.rows.length) continue;
+
+    const hooks = await db.select().from(webhooks).where(eq(webhooks.id, String(row.webhook_id))).limit(1);
     const w = hooks[0];
     if (!w || !w.isActive) {
-      await db.update(webhookDeliveries).set({ dead: true, nextAttemptAt: null }).where(eq(webhookDeliveries.id, d.id));
+      await db.update(webhookDeliveries).set({ dead: true, nextAttemptAt: null }).where(eq(webhookDeliveries.id, id));
       continue;
     }
     await deliverOnce(
       w,
-      d.eventType,
-      d.payload,
-      d.eventId || d.id,
-      d.id,
-      (d.attempts || 0) + 1,
+      String(row.payload),
+      String(row.event_id || id),
+      id,
+      Number(row.attempts || 0) + 1,
     );
     processed += 1;
   }
+  client.close();
   return { processed };
 }
 
@@ -210,6 +275,6 @@ export async function redeliverWebhook(deliveryId: string) {
     .update(webhookDeliveries)
     .set({ dead: false, nextAttemptAt: null, lastError: null })
     .where(eq(webhookDeliveries.id, d.id));
-  await deliverOnce(w, d.eventType, d.payload, d.eventId || d.id, d.id, (d.attempts || 0) + 1);
+  await deliverOnce(w, d.payload, d.eventId || d.id, d.id, (d.attempts || 0) + 1);
   return { ok: true };
 }
