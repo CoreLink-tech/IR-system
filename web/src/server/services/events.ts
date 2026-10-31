@@ -61,7 +61,8 @@ function scrubMetadata(meta: Record<string, unknown> | undefined): string | null
 
 async function scoreEvent(
   type: string,
-  severity?: string,
+  severity: string | undefined,
+  ctx: { ip?: string | null; tenantId?: string | null },
 ): Promise<{
   riskScore: number;
   riskLevel: string;
@@ -69,8 +70,16 @@ async function scoreEvent(
   autoBlockThreshold: number;
   blockMinutes: number;
   incidentThreshold: number;
+  skipAutoBlock: boolean;
 }> {
   const { getRuleRuntime } = await import('@/server/services/rules');
+  const {
+    countEventsInWindow,
+    countDistinctUsersLoginFailed,
+    countLogPathHits,
+    isOnCooldown,
+    bumpEntityScore,
+  } = await import('@/server/services/velocity');
   const rules = await getRuleRuntime();
   const matched: string[] = [];
   let riskScore = 0;
@@ -90,15 +99,77 @@ async function scoreEvent(
   if (severity === 'CRITICAL') riskScore += 30;
   else if (severity === 'HIGH') riskScore += 20;
   else if (severity === 'MEDIUM') riskScore += 10;
+
+  // Phase 2 velocity / sequence-lite signals (DB window counts)
+  if (ctx.ip) {
+    const bf = rules['brute_force'];
+    if (bf?.enabled && type === 'login_failed') {
+      const n = await countEventsInWindow({
+        ip: ctx.ip,
+        eventType: 'login_failed',
+        windowMinutes: bf.config.windowMinutes ?? 15,
+      });
+      // +1 for current event not yet inserted
+      if (n + 1 >= (bf.config.threshold ?? 5)) {
+        riskScore += bf.config.bonusScore ?? 25;
+        matched.push('brute_force');
+      }
+    }
+    const cs = rules['credential_stuffing'];
+    if (cs?.enabled && type === 'login_failed') {
+      const users = await countDistinctUsersLoginFailed({
+        ip: ctx.ip,
+        windowMinutes: cs.config.windowMinutes ?? 30,
+      });
+      if (users >= (cs.config.distinctUsers ?? 8)) {
+        riskScore += cs.config.bonusScore ?? 35;
+        matched.push('credential_stuffing');
+      }
+    }
+    const wp = rules['wp_probe'];
+    if (wp?.enabled && ctx.tenantId) {
+      const hits =
+        (await countLogPathHits({
+          tenantId: ctx.tenantId,
+          ip: ctx.ip,
+          pathSubstring: 'wp-login',
+          windowMinutes: wp.config.windowMinutes ?? 10,
+        })) +
+        (await countLogPathHits({
+          tenantId: ctx.tenantId,
+          ip: ctx.ip,
+          pathSubstring: 'xmlrpc.php',
+          windowMinutes: wp.config.windowMinutes ?? 10,
+        }));
+      if (hits >= (wp.config.threshold ?? 10)) {
+        riskScore += wp.config.bonusScore ?? 30;
+        matched.push('wp_probe');
+      }
+    }
+    const entity = await bumpEntityScore({
+      tenantId: ctx.tenantId,
+      entityType: 'ip',
+      entityKey: ctx.ip,
+      delta: Math.min(15, Math.floor(riskScore / 10)),
+    });
+    if (entity >= 60 && !matched.includes('entity_ip_elevated')) {
+      riskScore = Math.min(100, riskScore + 10);
+      matched.push('entity_ip_elevated');
+    }
+  }
+
   riskScore = Math.min(100, riskScore);
   const riskLevel =
     riskScore >= 85 ? 'CRITICAL' : riskScore >= 60 ? 'HIGH' : riskScore >= 30 ? 'SUSPICIOUS' : 'NORMAL';
   const ab = rules['auto_block'];
-  // Default 70 so payment+CRITICAL (80) and high single events can auto-block
   const autoBlockThreshold = ab?.enabled ? (ab.config.threshold ?? 70) : 999;
   const blockMinutes = ab?.config.blockMinutes ?? 60;
-  const incidentThreshold = 35; // login_failed base 30 + MEDIUM 10 = 40; single MEDIUM login_failed opens
-  return { riskScore, riskLevel, matched, autoBlockThreshold, blockMinutes, incidentThreshold };
+  const incidentThreshold = 35;
+  let skipAutoBlock = false;
+  if (ctx.ip) {
+    skipAutoBlock = await isOnCooldown('auto_block', `ip:${ctx.ip}`);
+  }
+  return { riskScore, riskLevel, matched, autoBlockThreshold, blockMinutes, incidentThreshold, skipAutoBlock };
 }
 
 function isPrivateIp(ip: string): boolean {
@@ -197,13 +268,13 @@ export async function ingestEvent(apiKeyId: string, body: IngestBody, tenantId?:
     }
   }
 
-  const { riskScore, riskLevel, matched, autoBlockThreshold, blockMinutes, incidentThreshold } =
-    await scoreEvent(body.event_type, body.severity);
+  const resolvedTenant = tenantId || (await ensureDefaultTenant());
+  const { riskScore, riskLevel, matched, autoBlockThreshold, blockMinutes, incidentThreshold, skipAutoBlock } =
+    await scoreEvent(body.event_type, body.severity, { ip: body.ip_address, tenantId: resolvedTenant });
   const eventId = newId();
   const occurredAt = body.timestamp ? new Date(body.timestamp) : new Date();
 
   // Persist event first so incident/block failures cannot drop evidence
-  const resolvedTenant = tenantId || (await ensureDefaultTenant());
 
   await db.insert(events).values({
     id: eventId,
@@ -251,7 +322,7 @@ export async function ingestEvent(apiKeyId: string, body: IngestBody, tenantId?:
       console.error('incident attach failed; event retained', eventId, e);
     }
 
-    if (riskScore >= autoBlockThreshold && body.ip_address && !isPrivateIp(body.ip_address)) {
+    if (!skipAutoBlock && riskScore >= autoBlockThreshold && body.ip_address && !isPrivateIp(body.ip_address)) {
       try {
         const allowed = await db
           .select()
@@ -285,6 +356,16 @@ export async function ingestEvent(apiKeyId: string, body: IngestBody, tenantId?:
               ip: body.ip_address,
               reason: `Automatic: risk ${riskScore}`,
               incident_id: incidentId,
+            });
+            const { setCooldown } = await import('@/server/services/velocity');
+            const { getRuleRuntime: gr } = await import('@/server/services/rules');
+            const rt = await gr();
+            const cdMin = rt['cooldown']?.config?.blockCooldownMinutes ?? 30;
+            await setCooldown({
+              tenantId: resolvedTenant,
+              ruleCode: 'auto_block',
+              entityKey: `ip:${body.ip_address}`,
+              minutes: cdMin,
             });
           }
         }

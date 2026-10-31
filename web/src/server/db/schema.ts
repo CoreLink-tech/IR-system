@@ -280,3 +280,22 @@ export const incidentStatusHistory = sqliteTable('incident_status_history', {
   actorId: text('actor_id'),
   createdAt: ts('created_at').default(sql`(unixepoch() * 1000)`),
 }, (t) => [index('incident_status_history_incident_idx').on(t.incidentId)]);
+
+export const entityScores = sqliteTable('entity_scores', {
+  id: id(),
+  tenantId: text('tenant_id'),
+  entityType: text('entity_type').notNull(),
+  entityKey: text('entity_key').notNull(),
+  score: integer('score').notNull().default(0),
+  lastEventAt: tsNull('last_event_at'),
+  updatedAt: ts('updated_at').default(sql`(unixepoch() * 1000)`),
+}, (t) => [index('entity_scores_key_idx').on(t.entityType, t.entityKey)]);
+
+export const ruleCooldowns = sqliteTable('rule_cooldowns', {
+  id: id(),
+  tenantId: text('tenant_id'),
+  ruleCode: text('rule_code').notNull(),
+  entityKey: text('entity_key').notNull(),
+  untilAt: ts('until_at'),
+  createdAt: ts('created_at').default(sql`(unixepoch() * 1000)`),
+}, (t) => [index('rule_cooldowns_lookup_idx').on(t.ruleCode, t.entityKey, t.untilAt)]);

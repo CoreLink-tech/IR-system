@@ -22,6 +22,13 @@
       "when": 1730000000002,
       "tag": "0002_phase1_status_history",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1730000000003,
+      "tag": "0003_phase2_detection",
+      "breakpoints": true
     }
   ]
 }

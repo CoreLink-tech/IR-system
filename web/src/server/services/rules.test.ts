@@ -22,3 +22,11 @@ describe('RULE_CATALOG', () => {
     }
   });
 });
+
+describe("phase2 rules", () => {
+  it("includes velocity rules", () => {
+    const codes = RULE_CATALOG.map((r) => r.code);
+    expect(codes).toContain("brute_force");
+    expect(codes).toContain("credential_stuffing");
+  });
+});
